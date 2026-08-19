@@ -31,10 +31,21 @@ const openai = createOpenAI({ fetch: instrumentedFetch });
 new Agent({ model: openai('gpt-5'), tools, skills });
 ```
 
-**Never use the convenient `model: 'openai/gpt-5'` string form.** It routes
-through Mastra's own provider registry and exposes no `fetch` hook — the wire
-plane goes dark and the X-ray shows nothing. This is the single easiest way to
-silently break the core feature.
+**Two model forms silently disable it. Never use either:**
+
+```ts
+model: 'openai/gpt-5'                  // ❌ model-router string
+model: { id: 'openai/gpt-5', apiKey }  // ❌ OpenAICompatibleConfig
+```
+
+Both route through Mastra's own provider registry, which builds its own HTTP
+client and exposes no `fetch` hook. Wire capture stops with no error and no
+failing test — the X-ray just quietly shows nothing.
+
+The rule applies **everywhere a model is named**, not only on the agent:
+`structuredOutput.model`, scorer `judge.model`, `Memory` embedders, and subagent
+models. Mastra's own docs use the string form throughout, so any example copied
+from them must be converted.
 
 ### Browser shims (proven against @mastra/core 1.60.0)
 
@@ -122,6 +133,15 @@ Colophon must be usable from networks that filter AI services. Therefore:
   `getToolsForExecution()`, `listSkills()`); draw workflows as real step graphs.
 - @mastra/core ships **full source maps with original TypeScript and comments**,
   so the lab can quote real framework source rather than paraphrase it.
+- The Postgres store is exported as **`PostgresStore`** from `@mastra/pg`, not
+  `PgStore` as the docs say. Verified against the installed package.
+
+### The skill
+
+`.claude/skills/mastra/SKILL.md` is a task-organised Mastra 1.x reference,
+generated from the docs and then verified against the installed `.d.ts` files.
+Read it before writing Mastra code — it is more current than the upstream docs
+in at least one place (see `PostgresStore` above).
 
 ---
 
