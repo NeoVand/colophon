@@ -149,7 +149,7 @@ be built from scorers alone. The two mechanisms that actually gate are:
 - the agent's **`goal`**, judged by an in-loop scorer, which keeps the agent
   working until the objective is met or the run budget is spent.
 
-Use a scorer to *measure*, a processor to *refuse*. Found by compiling the
+Use a scorer to _measure_, a processor to _refuse_. Found by compiling the
 skill's snippets against the installed package — Mastra's own docs read as if
 scorers gate.
 
@@ -161,7 +161,7 @@ against the installed package with `tsc --strict`. Read it before writing Mastra
 code: it is more accurate than the upstream docs in several places, including
 
 - `ChunkType` lives in `@mastra/core/stream`, not `/processors`;
-- `beforeToolCall` returns *nothing* to proceed (`{ proceed: true }` is a type
+- `beforeToolCall` returns _nothing_ to proceed (`{ proceed: true }` is a type
   error — the result type only has the `false` variant);
 - **`.branch()` runs every truthy arm concurrently**, not just the first — the
   upstream docs say "only one branch executes" and are wrong;

@@ -1,29 +1,45 @@
 import type { Handle } from '@sveltejs/kit';
-import { building } from '$app/environment';
-import { auth } from '$lib/server/auth';
-import { svelteKitHandler } from 'better-auth/svelte-kit';
-import { isDatabaseConfigured } from '$lib/server/db';
+import { dev } from '$app/environment';
+import { error, redirect } from '@sveltejs/kit';
+import { SESSION_COOKIE, isGateConfigured, sessionIsValid } from '$lib/server/gate';
 
 /**
- * Attach the session, when there is somewhere to keep sessions.
+ * Nothing gets past here without the password.
  *
- * Before a database is provisioned, Colophon still has to serve the Lab — the
- * browser-only half runs a whole Mastra harness with no server state at all, and
- * it would be absurd for it to 500 because Postgres is missing. So when storage
- * is unconfigured we simply serve every request unauthenticated. Study mode's
- * routes check `locals.user` and will refuse on their own.
+ * Colophon is deployed publicly and carries a provider key, so an open route is
+ * an open wallet. The allowlist below is deliberately tiny: the login page, and
+ * the assets the login page needs to render.
+ *
+ * If the gate is unconfigured we fail *closed* in production rather than
+ * serving an open app — the failure mode of a forgotten environment variable
+ * should be an outage, not a stranger spending your credits. In development
+ * there is no key worth stealing and a password prompt on every reload is a
+ * tax, so it runs open and says so.
  */
-const handleBetterAuth: Handle = async ({ event, resolve }) => {
-	if (!isDatabaseConfigured()) return resolve(event);
 
-	const session = await auth.api.getSession({ headers: event.request.headers });
+const PUBLIC_PATHS = new Set(['/login']);
 
-	if (session) {
-		event.locals.session = session.session;
-		event.locals.user = session.user;
+export const handle: Handle = async ({ event, resolve }) => {
+	const { pathname } = event.url;
+
+	if (!isGateConfigured()) {
+		if (!dev) {
+			error(
+				503,
+				'COLOPHON_PASSWORD is not set. Refusing to serve an ungated deployment that holds a provider key.'
+			);
+		}
+		event.locals.authenticated = true;
+		return resolve(event);
 	}
 
-	return svelteKitHandler({ event, resolve, auth, building });
-};
+	const authenticated = await sessionIsValid(event.cookies.get(SESSION_COOKIE));
+	event.locals.authenticated = authenticated;
 
-export const handle: Handle = handleBetterAuth;
+	if (authenticated || PUBLIC_PATHS.has(pathname)) return resolve(event);
+
+	// An API caller wants a status code, not a login page it cannot render.
+	if (pathname.startsWith('/api/')) error(401, 'Not signed in.');
+
+	redirect(303, `/login?next=${encodeURIComponent(pathname)}`);
+};
