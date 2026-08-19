@@ -79,3 +79,34 @@ Updated as milestones land. After a context compaction, read this first.
   **Design change from the skill's verification pass:** scorers do not gate.
   The M4 "only send if it clears the bar" must be an output processor calling
   `abort()`, or the agent's `goal`. See CLAUDE.md.
+
+- **2026-08-19** — the gate (see commit). Production was public with a key
+  behind it; that is closed. Password + HMAC cookie, no database, fails closed.
+
+- **2026-08-19** — M3 groundwork: the source registry and retrieval.
+
+  **A dividend of going server-side:** harnessXray could only use OpenAlex,
+  because arXiv's API sends no CORS header. We can now use both — arXiv for
+  what appeared this morning (real date/category filters, live within hours),
+  OpenAlex for what matters (citation counts, resolved authors, DOIs, but days
+  to weeks behind on preprints).
+
+  **Two things live testing caught that fixtures could not:**
+  - arXiv defaults multi-term queries to **OR**. `all:mechanistic interpretability`
+    was silently read as `all:mechanistic OR all:interpretability` and returned
+    papers about neither. Every term is now ANDed. The API echoes its own
+    interpretation in the feed title, which is how this was visible at all.
+  - OpenAlex's anonymous pool is ~100 requests/day **per IP**. On a server that
+    is the whole application's budget, not one user's. `OPENALEX_MAILTO` joins
+    the polite pool (~100k/day) and is **not yet set** — see below.
+
+## Needs Neo
+
+- **Neon.** `vercel integration accept-terms` requires an interactive terminal
+  and human confirmation, so it cannot be provisioned from here. Dashboard →
+  project → Storage → Create Database → Neon (free).
+- **Claude in Chrome is not connected**, so the dashboard cannot be driven for
+  him either. Extension + side-panel sign-in would fix it.
+- **`OPENALEX_MAILTO`** — a contact address raises the OpenAlex limit from
+  ~100/day to ~100k/day. Deliberately not defaulted to his address without
+  asking, since it is sent to a third party on every search.
