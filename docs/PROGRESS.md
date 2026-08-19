@@ -4,8 +4,8 @@ Updated as milestones land. After a context compaction, read this first.
 
 | # | Milestone | Status |
 |---|-----------|--------|
-| M0 | Three spikes: browser run, Vercel deploy, SSE through a proxy | in progress |
-| M1 | Skeleton: SvelteKit + auth + proxied model access | not started |
+| M0 | Three spikes: browser run, Vercel deploy, SSE through a proxy | **done** |
+| M1 | Skeleton: SvelteKit + auth + proxied model access | next |
 | M2 | Storage behind one interface (Postgres + blob) | not started |
 | M3 | The research agent (interactive) | not started |
 | M4 | It runs without you: subscriptions, cron, scorer gate, email | not started |
@@ -17,8 +17,9 @@ Updated as milestones land. After a context compaction, read this first.
 - [x] `CLAUDE.md` written with the load-bearing facts
 - [x] Browser shim set ported and a Mastra agent bundles under Vite
 - [x] A real streamed Mastra run (server-side, SSE) — `/api/agent/stream`
-- [ ] A real streamed Mastra run from a Vercel function (measure bundle vs 250 MB)
-- [ ] SSE survives a buffering proxy (or the fallback does)
+- [x] A real streamed Mastra run from a Vercel function — live at https://colophon-woad.vercel.app
+- [x] SSE is not buffered by Vercel's own edge (ttfb 0.19s, total 4.1s)
+- [ ] SSE survives a *corporate* buffering proxy — **needs Neo to test from a restricted network**
 - [x] A Mastra skill authored for this repo (`.claude/skills/mastra/SKILL.md`, 418 lines)
 
 ## Log
@@ -41,3 +42,18 @@ Updated as milestones land. After a context compaction, read this first.
     `PostgresStore` (docs say `PgStore`), and sharpened the model rule: the
     `{ id, apiKey }` config object also exposes no `fetch` hook, not just the
     router string. CLAUDE.md updated.
+
+## Known issues
+
+- **The terminal SSE chunks are enormous.** `step-finish` and `finish` each carry
+  the full message history, the outgoing request body, and the encrypted
+  reasoning blob — repeated across `steps[]`, `messages.all` and
+  `messages.nonUser`. One trivial two-word answer produced ~30 KB of terminal
+  chunk against ~200 bytes of actual text. Before the chat UI ships, the
+  endpoint must project chunks down to what the client needs and keep the fat
+  payloads server-side for the X-ray to fetch on demand.
+
+- **A gift hidden in the same chunk:** `step-finish.payload.metadata.request.body`
+  is the literal outgoing request. That is the Context panel's data source,
+  available without wire capture. Wire capture still earns its place for the raw
+  bytes and the response headers, but the assembled prompt is already published.

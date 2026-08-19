@@ -31,3 +31,4 @@ test-results
 /vault
 /data
 *.local.*
+.env*
