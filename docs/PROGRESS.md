@@ -15,7 +15,7 @@ Updated as milestones land. After a context compaction, read this first.
 
 - [x] Scaffold SvelteKit with ai-tools, better-auth, drizzle/neon, vercel adapter
 - [x] `CLAUDE.md` written with the load-bearing facts
-- [ ] Browser shim set ported and a Mastra agent bundles under Vite
+- [x] Browser shim set ported and a Mastra agent bundles under Vite
 - [ ] A real streamed Mastra run in a browser tab
 - [ ] A real streamed Mastra run from a Vercel function (measure bundle vs 250 MB)
 - [ ] SSE survives a buffering proxy (or the fallback does)
@@ -24,3 +24,9 @@ Updated as milestones land. After a context compaction, read this first.
 ## Log
 
 - **2026-08-19** — repo created, scaffold complete.
+- **2026-08-19** — browser gate passes 7/7 at `/lab/probe`, in a real Chrome tab:
+  module graph initialises, agent constructs, tools/instructions/model resolve
+  through the fetch seam, sha256 shim matches the NIST vector.
+  Two findings beyond the original esbuild probe:
+  `@ast-grep/napi` (a native N-API addon) must be stubbed, and Vite's dep
+  pre-bundler runs a *separate* esbuild pass that needs the shim table too.

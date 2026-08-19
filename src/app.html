@@ -4,6 +4,17 @@
 		<meta charset="utf-8" />
 		<meta name="viewport" content="width=device-width, initial-scale=1" />
 		<meta name="text-scale" content="scale" />
+		<script>
+			// Mastra's dependency stack probes `process` at *module initialisation*,
+			// before any of our code runs, so a build-time `define` cannot reach it —
+			// the import itself dies with `ReferenceError: process is not defined`
+			// from workspace-*.js. Four fields is everything it actually reads.
+			//
+			// Deliberately NOT a full polyfill: anything reaching for more than this
+			// should fail loudly so we find out, rather than silently reading
+			// plausible nonsense. Browser only — the server has the real thing.
+			globalThis.process ??= { env: {}, platform: 'browser', versions: {}, cwd: () => '/' };
+		</script>
 		%sveltekit.head%
 	</head>
 	<body data-sveltekit-preload-data="hover">
