@@ -34,8 +34,10 @@ new Agent({ model: openai('gpt-5'), tools, skills });
 **Two model forms silently disable it. Never use either:**
 
 ```ts
-model: 'openai/gpt-5'                  // ❌ model-router string
-model: { id: 'openai/gpt-5', apiKey }  // ❌ OpenAICompatibleConfig
+model: 'openai/gpt-5'; // ❌ model-router string
+model: {
+	id: ('openai/gpt-5', apiKey);
+} // ❌ OpenAICompatibleConfig
 ```
 
 Both route through Mastra's own provider registry, which builds its own HTTP
@@ -52,15 +54,15 @@ from them must be converted.
 `@mastra/core/agent` fails to bundle for a browser with 148 esbuild errors and
 closes to zero with the aliases below. 4.3 MB minified, 1.0 MB gzipped.
 
-| Specifier                          | Replacement          | Note                                            |
-| ---------------------------------- | -------------------- | ----------------------------------------------- |
-| `node:stream/web`                  | web globals          | `ReadableStream` & co. are native — a re-export  |
-| `node:async_hooks`                 | ALS shim             | ported from harnessXray verbatim                 |
-| `node:path`, `node:path/posix`     | `path-browserify`    |                                                 |
-| `node:crypto`                      | webcrypto            | `createHash` needs a tiny FNV/sha impl           |
+| Specifier                          | Replacement           | Note                                                                  |
+| ---------------------------------- | --------------------- | --------------------------------------------------------------------- |
+| `node:stream/web`                  | web globals           | `ReadableStream` & co. are native — a re-export                       |
+| `node:async_hooks`                 | ALS shim              | ported from harnessXray verbatim                                      |
+| `node:path`, `node:path/posix`     | `path-browserify`     |                                                                       |
+| `node:crypto`                      | webcrypto             | `createHash` needs a tiny FNV/sha impl                                |
 | `node:events`                      | **real** EventEmitter | Mastra builds a PubSub at module init — a throwing stub is not enough |
-| `execa`, `cross-spawn`             | throwing stub        | 67 of the 148 errors; local process sandbox      |
-| `node:fs`, `child_process`, `net`… | throwing stubs       | reachable, never executed                        |
+| `execa`, `cross-spawn`             | throwing stub         | 67 of the 148 errors; local process sandbox                           |
+| `node:fs`, `child_process`, `net`… | throwing stubs        | reachable, never executed                                             |
 
 **`globalThis.process` needs a four-field stub** (`env`, `platform`, `versions`,
 `cwd`) in `app.html`. This is **not** a build-time define — Mastra probes it at
@@ -73,7 +75,7 @@ from `workspace-*.js` at import time.
 Mastra's built-in scheduler is a `setInterval` tick loop that assumes a
 long-lived host process. Its own docs say it does **not** work on Vercel,
 Netlify, Lambda or Cloudflare Workers. Platform cron fires a route; the route
-starts a workflow. `mastra.schedules` may still hold the *subscriptions* — it is
+starts a workflow. `mastra.schedules` may still hold the _subscriptions_ — it is
 just not the thing that fires them.
 
 ### Durability — do not use Mastra's `DurableAgent`
@@ -136,12 +138,34 @@ Colophon must be usable from networks that filter AI services. Therefore:
 - The Postgres store is exported as **`PostgresStore`** from `@mastra/pg`, not
   `PgStore` as the docs say. Verified against the installed package.
 
+### Scorers do not gate anything
+
+**`scorers: {}` on an agent never blocks a result.** It records a score; it does
+not stop delivery. The plan's "only send if it clears the bar" therefore cannot
+be built from scorers alone. The two mechanisms that actually gate are:
+
+- an **output processor** calling `abort()`, which raises a `TripWire` and emits
+  a `tripwire` chunk the client can see; and
+- the agent's **`goal`**, judged by an in-loop scorer, which keeps the agent
+  working until the objective is met or the run budget is spent.
+
+Use a scorer to *measure*, a processor to *refuse*. Found by compiling the
+skill's snippets against the installed package — Mastra's own docs read as if
+scorers gate.
+
 ### The skill
 
 `.claude/skills/mastra/SKILL.md` is a task-organised Mastra 1.x reference,
-generated from the docs and then verified against the installed `.d.ts` files.
-Read it before writing Mastra code — it is more current than the upstream docs
-in at least one place (see `PostgresStore` above).
+generated from the docs and then verified by **compiling its own snippets**
+against the installed package with `tsc --strict`. Read it before writing Mastra
+code: it is more accurate than the upstream docs in several places, including
+
+- `ChunkType` lives in `@mastra/core/stream`, not `/processors`;
+- `beforeToolCall` returns *nothing* to proceed (`{ proceed: true }` is a type
+  error — the result type only has the `false` variant);
+- **`.branch()` runs every truthy arm concurrently**, not just the first — the
+  upstream docs say "only one branch executes" and are wrong;
+- `createStep(agent)` takes the agent's `id`, not its `name`.
 
 ---
 
@@ -157,7 +181,7 @@ Never commit `.env`. Keys are server-side only.
 ## Conventions
 
 - Match the surrounding code's comment density and naming.
-- Comments explain *why*, especially where a decision above is being honoured.
+- Comments explain _why_, especially where a decision above is being honoured.
 - Every milestone ends in a commit and an update to `docs/PROGRESS.md`.
 - Decisions that change the architecture get a dated entry in
   `docs/DECISIONS.md`.

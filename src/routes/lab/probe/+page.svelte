@@ -44,7 +44,7 @@
 				id: 'echo',
 				description: 'Echo a message back, to prove tool wiring.',
 				inputSchema: z.object({ message: z.string() }),
-				execute: async ({ context }) => ({ echoed: context.message })
+				execute: async ({ message }) => ({ echoed: message })
 			});
 
 			// The model is constructed the long way on purpose. See CLAUDE.md: the
@@ -68,7 +68,11 @@
 			record('agent constructs', true, 'new Agent() returned');
 
 			const tools = await agent.getToolsForExecution({});
-			record('tools resolve', Object.keys(tools ?? {}).length === 1, Object.keys(tools ?? {}).join(', '));
+			record(
+				'tools resolve',
+				Object.keys(tools ?? {}).length === 1,
+				Object.keys(tools ?? {}).join(', ')
+			);
 
 			const instructions = await agent.getInstructions();
 			record('instructions resolve', typeof instructions === 'string', String(instructions));
@@ -107,14 +111,18 @@
 <svelte:head><title>Harness probe · Colophon</title></svelte:head>
 
 <main class="mx-auto max-w-2xl px-6 py-16 text-neutral-900 dark:text-neutral-100">
-	<p class="font-mono text-xs uppercase tracking-widest text-neutral-500">Lab · M0 gate</p>
-	<h1 class="mt-3 text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">Does the harness run in a browser?</h1>
+	<p class="font-mono text-xs tracking-widest text-neutral-500 uppercase">Lab · M0 gate</p>
+	<h1 class="mt-3 text-3xl font-semibold tracking-tight text-neutral-900 dark:text-neutral-50">
+		Does the harness run in a browser?
+	</h1>
 	<p class="mt-3 max-w-prose text-neutral-600 dark:text-neutral-400">
 		A real Mastra agent, constructed in this tab. No server, no key, and no network — this page
 		proves the module graph initialises and the agent can introspect itself.
 	</p>
 
-	<div class="mt-8 divide-y divide-neutral-200 border-y border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800">
+	<div
+		class="mt-8 divide-y divide-neutral-200 border-y border-neutral-200 dark:divide-neutral-800 dark:border-neutral-800"
+	>
 		{#each checks as check (check.name)}
 			<div class="flex items-baseline gap-3 py-3">
 				<span class="font-mono text-sm {check.ok ? 'text-emerald-600' : 'text-red-600'}">
@@ -132,7 +140,9 @@
 		<p class="mt-6 font-mono text-sm text-neutral-500">running…</p>
 	{:else if finished}
 		<p class="mt-6 font-mono text-sm {allPassed ? 'text-emerald-600' : 'text-red-600'}">
-			{passed}/{checks.length} passed{allPassed ? ' — Lab mode is viable' : ' — see the failure above'}
+			{passed}/{checks.length} passed{allPassed
+				? ' — Lab mode is viable'
+				: ' — see the failure above'}
 		</p>
 		<button
 			class="mt-4 rounded border border-neutral-300 px-3 py-1.5 font-mono text-xs hover:bg-neutral-100 dark:border-neutral-700 dark:hover:bg-neutral-900"

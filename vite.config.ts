@@ -6,7 +6,8 @@ import { sveltekit } from '@sveltejs/kit/vite';
 import type { Plugin } from 'vite';
 import { fileURLToPath } from 'node:url';
 
-const shim = (name: string) => fileURLToPath(new URL(`./src/lib/shims/${name}.ts`, import.meta.url));
+const shim = (name: string) =>
+	fileURLToPath(new URL(`./src/lib/shims/${name}.ts`, import.meta.url));
 
 /**
  * Where each Node builtin goes when Mastra runs in a browser tab.
@@ -22,6 +23,9 @@ const BROWSER_SHIMS: Record<string, string> = {
 	async_hooks: shim('async-hooks'),
 	events: shim('node-events'),
 	fs: shim('node-fs'),
+	// Real, not a stub: unmapped, Vite externalises this and `Buffer` becomes
+	// undefined, which surfaces far from the cause.
+	buffer: shim('node-buffer'),
 
 	// Real implementations — these are genuinely used for path arithmetic.
 	path: shim('node-path'),

@@ -1,6 +1,7 @@
 import type { RequestHandler } from './$types';
 import { Agent } from '@mastra/core/agent';
 import { model, isModelConfigured } from '$lib/server/model';
+import { project } from '$lib/agent/events';
 import { error } from '@sveltejs/kit';
 
 /**
@@ -32,7 +33,10 @@ export const POST: RequestHandler = async ({ request }) => {
 		error(503, 'OPENAI_API_KEY is not configured on the server.');
 	}
 
-	const { prompt } = (await request.json()) as { prompt?: string };
+	const { prompt, detail = 'chat' } = (await request.json()) as {
+		prompt?: string;
+		detail?: 'chat' | 'full';
+	};
 	if (!prompt?.trim()) error(400, 'A prompt is required.');
 
 	const encoder = new TextEncoder();
@@ -59,8 +63,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				const agent = new Agent({
 					id: 'colophon-probe',
 					name: 'Colophon',
-					instructions:
-						'You are Colophon, a research companion. Answer briefly and precisely.',
+					instructions: 'You are Colophon, a research companion. Answer briefly and precisely.',
 					// Built through the factory on purpose — see src/lib/server/model.ts.
 					model: model()
 				});
@@ -69,10 +72,20 @@ export const POST: RequestHandler = async ({ request }) => {
 
 				// `fullStream` rather than `textStream`: Mastra publishes ~87 typed
 				// chunk kinds here — tool calls, steps, reasoning, usage — and that
-				// feed is what the X-ray will eventually read. Forwarding all of it
-				// now means the panels have a source the day they are written.
+				// is the feed the X-ray panels read.
+				//
+				// It is projected before it leaves the building unless the caller
+				// asks for `detail: 'full'`. Measured: the terminal chunks of a
+				// two-word answer are ~30 KB, nearly all of it the message history
+				// and the encrypted reasoning blob repeated three ways. Lab mode
+				// wants that; a phone on a train does not.
 				for await (const chunk of result.fullStream) {
-					send('chunk', chunk);
+					if (detail === 'full') {
+						send('chunk', chunk);
+						continue;
+					}
+					const event = project(chunk);
+					if (event) send('event', event);
 				}
 
 				send('done', { at: Date.now() });

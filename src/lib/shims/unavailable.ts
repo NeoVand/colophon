@@ -40,8 +40,7 @@ export const createRequire = () => unavailable('require');
 
 /* ── url ────────────────────────────────────────────────────────────────── */
 export const pathToFileURL = (path: string): URL => new URL(`file://${path}`);
-export const fileURLToPath = (url: string | URL): string =>
-	String(url).replace(/^file:\/\//, '');
+export const fileURLToPath = (url: string | URL): string => String(url).replace(/^file:\/\//, '');
 
 /* ── os ─────────────────────────────────────────────────────────────────── */
 // Truthful cheap answers: these are used to build paths and log lines, never
@@ -111,7 +110,4 @@ export const lookup = unavailable('dns.lookup');
  * something we have not seen before — which is exactly when we want a loud,
  * specific failure rather than `undefined`.
  */
-export default new Proxy(
-	{},
-	{ get: (_t, key) => unavailable(String(key)) }
-);
+export default new Proxy({}, { get: (_t, key) => unavailable(String(key)) });

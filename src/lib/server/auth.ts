@@ -11,23 +11,34 @@ import { db } from '$lib/server/db';
  * database would break every page rather than just the signed-in ones.
  */
 
-let instance: ReturnType<typeof betterAuth> | undefined;
+/**
+ * The type is inferred from our own builder rather than written as
+ * `ReturnType<typeof betterAuth>`. better-auth returns an `Auth` parameterised
+ * by the exact options object it was given, so the generic default is a
+ * *different, incompatible* type — annotating with it forces a cast that TS
+ * rightly rejects.
+ */
+function construct() {
+	return betterAuth({
+		baseURL: env.ORIGIN,
+		secret: env.BETTER_AUTH_SECRET,
+		database: drizzleAdapter(db, { provider: 'pg' }),
+		emailAndPassword: { enabled: true },
+		plugins: [
+			sveltekitCookies(getRequestEvent) // make sure this is the last plugin in the array
+		]
+	});
+}
 
-function build() {
-	if (!instance) {
-		instance = betterAuth({
-			baseURL: env.ORIGIN,
-			secret: env.BETTER_AUTH_SECRET,
-			database: drizzleAdapter(db, { provider: 'pg' }),
-			emailAndPassword: { enabled: true },
-			plugins: [
-				sveltekitCookies(getRequestEvent) // make sure this is the last plugin in the array
-			]
-		});
-	}
+type Auth = ReturnType<typeof construct>;
+
+let instance: Auth | undefined;
+
+function build(): Auth {
+	instance ??= construct();
 	return instance;
 }
 
-export const auth = new Proxy({} as ReturnType<typeof betterAuth>, {
-	get: (_target, key) => Reflect.get(build(), key)
+export const auth = new Proxy({} as Auth, {
+	get: (_target, key) => Reflect.get(build() as object, key)
 });

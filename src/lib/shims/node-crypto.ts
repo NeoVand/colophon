@@ -89,7 +89,10 @@ export function randomBytes(size: number): Uint8Array {
 }
 
 export function getRandomValues<T extends ArrayBufferView>(array: T): T {
-	return globalThis.crypto.getRandomValues(array);
+	// Web Crypto accepts any integer TypedArray; its declared parameter type is
+	// narrower than the reality, hence the cast rather than a narrower signature.
+	globalThis.crypto.getRandomValues(array as unknown as Uint8Array<ArrayBuffer>);
+	return array;
 }
 
 export const webcrypto = globalThis.crypto;
