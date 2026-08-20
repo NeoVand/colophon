@@ -216,7 +216,7 @@ Updated as milestones land. After a context compaction, read this first.
   number intact, then deleted.
 
   `generate_image` carries `requireApproval: true`. Every other tool reads;
-  this one *spends*, and a loop that decides it wants eight illustrations costs
+  this one _spends_, and a loop that decides it wants eight illustrations costs
   real money before anyone notices. What gets approved is the literal prompt the
   model wrote, not a description of one — and the model cannot route around a
   pause it does not control.
@@ -227,7 +227,7 @@ Updated as milestones land. After a context compaction, read this first.
     succeeded, the get returned undefined, and nothing complained. A silent miss
     is the worst shape of bug and it only showed up because the live test
     checked the readback rather than trusting the write.
-  - One *low-quality* 1024×1024 render is 1.72 MB, which settles the storage
+  - One _low-quality_ 1024×1024 render is 1.72 MB, which settles the storage
     question: 0.5 GB holds about 300 images before the vault has room for
     nothing else. Hence the 64 MB cap and the interface.
 

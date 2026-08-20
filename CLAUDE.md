@@ -153,6 +153,31 @@ Use a scorer to _measure_, a processor to _refuse_. Found by compiling the
 skill's snippets against the installed package — Mastra's own docs read as if
 scorers gate.
 
+### Approval needs a Mastra instance with storage
+
+`generate_image` pauses for a human, and the approval arrives in a _different_
+HTTP request — possibly a different serverless instance. The suspended run has
+to be findable from storage, which means the agent must be registered on a
+`Mastra` instance carrying `storage`. Without it, `approveToolCall()` fails with
+"snapshot not found".
+
+`agent.listSuspendedRuns({ threadId, resourceId })` is storage-backed and works
+across instances, which is what makes cross-request approval possible at all.
+
+**Open limitation:** the source registry is in-memory per request, so a tool
+that needs it cannot yet be approved across requests. Only `generate_image`
+requires approval today and it does not touch the registry.
+
+### Blob storage is a stopgap
+
+Images live in Postgres behind a 64 MB cap. One _low-quality_ 1024×1024 render
+is 1.72 MB, so 0.5 GB holds ~300 before the vault has room for nothing else.
+`src/lib/server/blobs.ts` is shaped like an object store so **Vercel Blob**
+(1 GB + 10 GB transfer free on Hobby) or R2 is a one-file swap.
+
+Also: drizzle's neon-http driver returns a pg-style `{ fields, rows, … }`, not a
+bare array. Treating it as an array reads as "not found" — a silent miss.
+
 ### The skill
 
 `.claude/skills/mastra/SKILL.md` is a task-organised Mastra 1.x reference,
@@ -168,6 +193,12 @@ code: it is more accurate than the upstream docs in several places, including
 - `createStep(agent)` takes the agent's `id`, not its `name`.
 
 ---
+
+## Read `docs/STATE.md` first
+
+After any context compaction, `docs/STATE.md` carries the situation: what is
+done, what is in flight, what is waiting on Neo, and how to run and test the
+thing. This file carries the technical facts that are expensive to rediscover.
 
 ## Design language
 

@@ -1,6 +1,7 @@
 import { Agent } from '@mastra/core/agent';
+import { Mastra } from '@mastra/core';
 import { model } from '$lib/server/model';
-import { agentMemory, isStorageConfigured } from '$lib/server/storage';
+import { agentMemory, isStorageConfigured, storage } from '$lib/server/storage';
 import { createResearchTools, type ResearchTools } from './tools';
 import { createPaperReader } from './paper-reader';
 import { createImageTools } from './image-tools';
@@ -74,6 +75,30 @@ export interface ColophonRun {
 	research: ResearchTools;
 }
 
+/**
+ * Registering the agent on a `Mastra` instance, purely so approval survives.
+ *
+ * `generate_image` pauses for a human. The approval arrives in a *different*
+ * HTTP request — possibly on a different serverless instance — so the suspended
+ * run has to be findable from storage rather than from process memory. That is
+ * what a Mastra instance with `storage` provides; without it,
+ * `approveToolCall()` fails with "snapshot not found".
+ *
+ * Nothing else here needs Mastra the container. The agent is still constructed
+ * per request so its source registry stays isolated; this only gives the
+ * snapshot somewhere to live.
+ */
+function register(agent: Agent): Agent {
+	if (!isStorageConfigured()) return agent;
+	// Constructing the container has the side effect of wiring storage into the
+	// agent; the agent instance is what everything else uses.
+	new Mastra({
+		agents: { colophon: agent },
+		storage: storage() as never
+	});
+	return agent;
+}
+
 export function createColophon({ thread }: { thread?: string } = {}): ColophonRun {
 	const research = createResearchTools();
 	const remembers = isStorageConfigured() && Boolean(thread);
@@ -94,5 +119,5 @@ export function createColophon({ thread }: { thread?: string } = {}): ColophonRu
 		...(remembers ? { memory: agentMemory() } : {})
 	});
 
-	return { agent, research };
+	return { agent: register(agent), research };
 }
