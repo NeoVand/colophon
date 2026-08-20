@@ -26,9 +26,14 @@
 	 * harnessXray can draw an empty track for a subagent that was never reached
 	 * for, because it can inspect the agent's roster. Colophon's agent is built
 	 * server-side and the browser is never handed its definition, so a lane here
-	 * exists only once a delegation has actually happened. An empty instrument
-	 * therefore means "nothing was delegated", not "there is nobody to delegate
-	 * to" — which is why the idle line says what it says.
+	 * exists only once a delegation has actually happened.
+	 *
+	 * That makes this the one gauge with nothing honest to draw at zero — it
+	 * cannot show the crew standing by, because it does not know who the crew
+	 * are. Every other instrument has a face it can draw empty; this one would be
+	 * a rail with nothing beside it. So `Cockpit` does not mount it until a
+	 * delegation exists, and the deck closes the gap. An unpopulated rail below
+	 * is a fallback for anything that mounts this directly, not the design.
 	 */
 
 	/** Live width for a delegation still running. See the note in `ToolDial`. */
@@ -111,7 +116,9 @@
 
 <div class="crew">
 	{#if !lanes.length}
-		<span class="idle">nothing delegated yet</span>
+		<ul class="lanes">
+			<li><span class="name"></span><span class="track"></span><span class="spent"></span></li>
+		</ul>
 	{:else}
 		<ul class="lanes">
 			{#each lanes as lane (lane.name)}
@@ -231,15 +238,5 @@
 		text-align: right;
 		font-size: 0.5rem;
 		color: color-mix(in oklab, var(--muted-foreground) 80%, transparent);
-	}
-
-	.idle {
-		margin: auto;
-		font-family: var(--font-mono);
-		font-size: 0.5rem;
-		letter-spacing: 0.09em;
-		text-transform: uppercase;
-		color: var(--muted-foreground);
-		opacity: 0.55;
 	}
 </style>

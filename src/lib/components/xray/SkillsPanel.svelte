@@ -5,6 +5,7 @@
 	import { SKILL_CARDS, type SkillCard } from '$lib/agent/skills';
 	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 
 	/**
 	 * What the agent could look up, and what it actually did.
@@ -93,8 +94,8 @@
 		<EmptyState
 			icon={ICON.skills}
 			tone="accent"
-			title="No skills attached to this run"
-			note="A skill is a document the model can choose to read: its description rides on every call, its instructions arrive only when it asks for them by name. With none attached, everything this agent knows sits in its instructions and is paid for on every single call."
+			title="No skills attached"
+			note="A skill is a document the model reads only when it asks for it by name."
 		/>
 	{:else}
 		<div class="content">
@@ -142,10 +143,19 @@
 									</p>
 								{/if}
 
+								<!--
+									The compaction rule used to be a paragraph at the foot of the
+									panel explaining why "activated ×2" happens. It belongs on the
+									word it explains, where it is read by whoever is puzzled.
+								-->
 								<p class="cost co-num">
 									<span class="k">{card.always}</span> tok in context always ·
 									<span class="k" class:on={used > 0}>{card.onDemand}</span> tok
-									{used ? 'loaded' : 'only if activated'}
+									<Tooltip
+										text="Instructions leave again on a compaction, so a long run can load the same skill twice."
+									>
+										<span>{used ? 'loaded' : 'only if activated'}</span>
+									</Tooltip>
 								</p>
 							{/if}
 						</div>
@@ -153,16 +163,11 @@
 				{/each}
 			</ul>
 
-			<p class="quiet foot">
-				{#if activeCount}
-					{alwaysCost} tokens of description ride on every call. The instructions arrive only when the
-					model asks for them, and they leave again on a compaction — so a long run may activate the same
-					skill more than once.
-				{:else}
-					Nothing activated yet. Only the {alwaysCost} tokens of description above are in context; the
-					{deferred} tokens of instruction stay out of it until the model calls
-					<code>skill</code>.
-				{/if}
+			<!-- The two numbers the paragraph here was circling around. Left as a
+			     readout: the split between what is always paid for and what is not
+			     is the panel's whole argument, and it fits on one line. -->
+			<p class="co-num foot">
+				{alwaysCost} tok always · {deferred} deferred
 			</p>
 		</div>
 	{/if}
@@ -184,19 +189,14 @@
 		color: var(--co-accent);
 	}
 
-	.quiet {
-		margin: 0;
-		font-size: 0.75rem;
-		line-height: 1.45;
-		color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
-	}
+	/* Sits under a scrolling list, so it is `flex: none` — a foot that scrolls
+	   away is not a foot. */
 	.foot {
 		flex: none;
-		font-size: 0.6875rem;
-	}
-	.foot code {
-		font-family: var(--font-mono);
-		font-size: 0.9em;
+		margin: 0;
+		padding-top: 0.5rem;
+		font-size: 0.625rem;
+		color: color-mix(in oklab, var(--muted-foreground) 65%, transparent);
 	}
 
 	.list {

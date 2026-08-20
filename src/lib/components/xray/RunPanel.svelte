@@ -90,8 +90,8 @@
 		<EmptyState
 			icon={ICON.model}
 			tone="model"
-			title="No run yet."
-			note="Steps taken, tokens in and out, how much of the input came back cached. Cached input is the cheapest line in the bill and the easiest to lose — rewrite one early message and every later call re-pays for the whole prefix."
+			title="No run yet"
+			note="Cached input is the cheapest line in the bill and the easiest to lose."
 		/>
 	{:else}
 		<div class="scroll">

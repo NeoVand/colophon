@@ -68,7 +68,7 @@
 		<EmptyState
 			icon={ICON.graph}
 			tone="subagent"
-			title="The pipeline could not be read"
+			title="Could not read the pipeline"
 			note={error}
 		/>
 	{:else if !topology}

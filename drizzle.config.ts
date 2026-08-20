@@ -19,7 +19,7 @@ export default defineConfig({
 	 * The filter scopes drizzle to the tables it actually owns. Anything added to
 	 * `schema.ts` must be added here too, or push will silently ignore it.
 	 */
-	tablesFilter: ['subscriptions', 'papers', 'digests'],
+	tablesFilter: ['subscriptions', 'papers', 'digests', 'documents'],
 
 	verbose: true,
 	strict: true

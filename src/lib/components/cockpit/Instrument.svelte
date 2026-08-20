@@ -28,12 +28,21 @@
 		readout?: string;
 		/** Lifts the label when this instrument is doing something right now. */
 		live?: boolean;
+		/**
+		 * Share of the row this instrument takes, as a flex grow factor.
+		 *
+		 * Here rather than on a wrapper in `Cockpit` because the alternative was a
+		 * `:global(*:first-child)` rule reaching through a component boundary to
+		 * weight one child of a flex row — the kind of selector that breaks the
+		 * next time the markup gains a wrapper. The anchor asks to be the anchor.
+		 */
+		grow?: number;
 		children: Snippet;
 	}
-	let { label, tone, readout, live = false, children }: Props = $props();
+	let { label, tone, readout, live = false, grow = 1, children }: Props = $props();
 </script>
 
-<section class="inst" class:live style:--tone="var({tone})">
+<section class="inst" class:live style:--tone="var({tone})" style:--grow={grow}>
 	<header>
 		<span class="co-eyebrow">{label}</span>
 		{#if readout}<span class="co-num readout">{readout}</span>{/if}
@@ -48,6 +57,10 @@
 		gap: 0.3rem;
 		min-width: 0;
 		min-height: 0;
+		/* `0` basis, never `auto`: an instrument sized from its content is an
+		   instrument that pushes its neighbours out of the box, and the one rule
+		   the cockpit has is that nothing scrolls. */
+		flex: var(--grow, 1) 1 0;
 	}
 
 	header {

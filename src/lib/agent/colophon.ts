@@ -5,6 +5,7 @@ import { agentMemory, isStorageConfigured, storage } from '$lib/server/storage';
 import { createResearchTools, type ResearchTools } from './tools';
 import { createPaperReader } from './paper-reader';
 import { createImageTools } from './image-tools';
+import { createWritingTools, type Outline } from './writing-tools';
 
 /**
  * Colophon itself.
@@ -51,6 +52,15 @@ End anything substantial with \`bibliography\`, so the references are provably
 the papers you actually consulted.
 
 ## Figures
+
+\`extract_figures\` pulls a paper's own figures out of arXiv's HTML edition. An
+extracted figure is **evidence**; a generated one is decoration. Reach for it
+first whenever the point is to show what a paper actually reported, and label a
+generated substitute as an illustration when no HTML edition exists.
+
+Before drafting anything long, call \`present_outline\`. It pauses for the
+reader, who may edit the structure — and what comes back is what they approved,
+not what you proposed. Work from that.
 
 You can generate an illustration with \`generate_image\`. It pauses for the
 reader's approval before it spends, so calling it *is* asking — never ask in
@@ -101,9 +111,21 @@ function register(agent: Agent): Agent {
 
 export function createColophon({
 	thread,
-	capture
+	capture,
+	editedOutline
 }: {
 	thread?: string;
+	/**
+	 * The outline as the reader edited it, when resuming an approved
+	 * `present_outline`.
+	 *
+	 * It has to arrive here because `approveToolCall()` takes no argument
+	 * override — a resumed call executes with the arguments the *model* wrote.
+	 * Without this the approval card would let someone rewrite the structure and
+	 * then silently discard every edit, which is worse than not offering the
+	 * edit at all.
+	 */
+	editedOutline?: Outline;
 	/**
 	 * The tee'd `fetch` the X-ray's context panel reads.
 	 *
@@ -128,7 +150,11 @@ export function createColophon({
 		// Always through the factory: the string and config-object model forms
 		// expose no fetch hook and would silently blind the X-ray. See CLAUDE.md.
 		model: model(undefined, capture),
-		tools: { ...research.tools, ...createImageTools().tools },
+		tools: {
+			...research.tools,
+			...createImageTools().tools,
+			...createWritingTools({ editedOutline }).tools
+		},
 		...(remembers ? { memory: agentMemory() } : {})
 	});
 

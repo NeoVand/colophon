@@ -53,6 +53,9 @@ import {
 	Message01Icon,
 	Moon02Icon,
 	Pdf01Icon,
+	PlusSignIcon,
+	SentIcon,
+	StopIcon,
 	PauseIcon,
 	PlayIcon,
 	Plug01Icon,
@@ -130,6 +133,9 @@ export const ICON = {
 	run: PlayIcon,
 	key: Key01Icon,
 	terminal: TerminalIcon,
+	add: PlusSignIcon,
+	send: SentIcon,
+	stop: StopIcon,
 	light: Sun02Icon,
 	dark: Moon02Icon
 } as const;

@@ -1,9 +1,14 @@
 <script lang="ts">
+	import type { IconSvgElement } from '@hugeicons/svelte';
+	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { session, type LoggedEvent } from '$lib/agent/session.svelte';
 	import { subagentOf } from '$lib/agent/events';
+	import { toolMeta } from '$lib/agent/tool-meta';
 	import { ICON } from '$lib/icons';
 	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import Toolbar from '$lib/components/ui/Toolbar.svelte';
+	import IconButton from '$lib/components/ui/IconButton.svelte';
 
 	/**
 	 * Every event in the run, in the order it arrived.
@@ -44,6 +49,10 @@
 		detail?: string;
 		tone: string;
 		lane?: string;
+		/** The tool's own glyph, so a column of calls is readable as a column. */
+		icon?: IconSvgElement;
+		/** The tool's blurb, on hover. Nothing on screen has to carry it. */
+		hint?: string;
 	}
 
 	/** Fold a run of text deltas into one row that counts them. */
@@ -101,7 +110,9 @@
 						label: event.subagent ?? event.name,
 						detail: briefArgs(event.args),
 						tone: event.subagent ? '--co-subagent' : '--co-tool',
-						lane: event.subagent
+						lane: event.subagent,
+						icon: toolMeta(event.name).icon,
+						hint: toolMeta(event.name).blurb
 					});
 					break;
 				case 'tool-result':
@@ -112,7 +123,9 @@
 						label: event.name ? (subagentOf(event.name) ?? event.name) : 'result',
 						detail: event.failed ? 'failed' : briefResult(event.result),
 						tone: event.failed ? '--co-error' : '--co-library',
-						lane: event.name ? subagentOf(event.name) : undefined
+						lane: event.name ? subagentOf(event.name) : undefined,
+						icon: event.name ? toolMeta(event.name).icon : undefined,
+						hint: event.name ? toolMeta(event.name).blurb : undefined
 					});
 					break;
 				case 'step':
@@ -192,7 +205,26 @@
 		return undefined;
 	}
 
-	const all = $derived(rowsOf(session.events));
+	/**
+	 * Where "clear" cleared to.
+	 *
+	 * A high-water mark rather than `session.events = []`, because this panel is
+	 * a *reading* of the log and not its owner: the run panel counts steps out of
+	 * it, the graph reconstructs the topology from it, and the ribbon draws it.
+	 * Emptying the array to tidy one scroller would silently blank three other
+	 * instruments — so clearing hides rows here and touches nothing else.
+	 *
+	 * A new thread restarts `seq` at zero, which would leave a stale mark hiding
+	 * everything; `floor` below drops back to zero when the log is shorter than
+	 * the mark, so a fresh run always shows itself.
+	 */
+	let clearedAt = $state(0);
+	const nextSeq = $derived(
+		session.events.length ? session.events[session.events.length - 1].seq + 1 : 0
+	);
+	const floor = $derived(clearedAt > nextSeq ? 0 : clearedAt);
+
+	const all = $derived(rowsOf(session.events.filter((e) => e.seq >= floor)));
 
 	/* Each reading materialised rather than switched on, so the tabs can carry
 	   their own counts — the number beside a tab is the reason to reach for it. */
@@ -212,37 +244,106 @@
 	]);
 
 	let scroller = $state<HTMLDivElement>();
+
+	/**
+	 * Whether the view rides the tail.
+	 *
+	 * Auto-scroll is right by default and wrong the moment anyone is reading: a
+	 * live research turn publishes hundreds of rows, and every one of them yanked
+	 * the scroller away from whatever was being looked at. The lock is the fix,
+	 * and it is a lock rather than a scroll-position heuristic because "did the
+	 * human scroll, or did we" is not reliably answerable from a scroll event.
+	 */
+	let follow = $state(true);
+
 	$effect(() => {
 		void rows.length;
-		if (scroller) scroller.scrollTop = scroller.scrollHeight;
+		if (follow && scroller) scroller.scrollTop = scroller.scrollHeight;
 	});
+
+	function toLatest(): void {
+		scroller?.scrollTo({ top: scroller.scrollHeight, behavior: 'smooth' });
+	}
+
+	/** Feedback for a copy has to come from the button; nothing else moves. */
+	let copied = $state(false);
+	let flash: ReturnType<typeof setTimeout> | undefined;
+
+	async function copyEvents(): Promise<void> {
+		// The reading on screen, not the whole log — copying rows a filter is
+		// hiding would hand over something the panel never showed.
+		const text = rows
+			.map((r) =>
+				[`${(r.at / 1000).toFixed(1)}s`, r.lane ? `  ${r.label}` : r.label, r.detail ?? '']
+					.join('\t')
+					.trimEnd()
+			)
+			.join('\n');
+		await navigator.clipboard.writeText(text);
+		copied = true;
+		clearTimeout(flash);
+		flash = setTimeout(() => (copied = false), 1200);
+	}
 </script>
 
+{#snippet viewTools()}
+	<IconButton
+		icon={ICON.run}
+		label="follow the tail"
+		active={follow}
+		onclick={() => (follow = !follow)}
+	/>
+	<IconButton
+		icon={ICON.expand}
+		label="jump to latest"
+		disabled={!rows.length}
+		onclick={toLatest}
+	/>
+{/snippet}
+
+{#snippet logTools()}
+	<IconButton
+		icon={copied ? ICON.check : ICON.copy}
+		label="copy events"
+		disabled={!rows.length}
+		onclick={copyEvents}
+	/>
+	<IconButton
+		icon={ICON.trash}
+		label="clear"
+		disabled={!all.length}
+		onclick={() => (clearedAt = nextSeq)}
+	/>
+{/snippet}
+
 <PanelFrame label="events" icon={ICON.events} tone="tool" {tabs} bind:active={filter}>
+	{#snippet actions()}
+		<Toolbar groups={[viewTools, logTools]} />
+	{/snippet}
+
 	{#if !all.length}
-		<EmptyState
-			icon={ICON.events}
-			tone="tool"
-			title="Nothing yet"
-			note="Every chunk the run publishes lands here, in order. A delegation gets its own indented lane, and the elapsed time on each row is what tells one slow fetch apart from thirty quick ones."
-		/>
+		<EmptyState icon={ICON.events} tone="tool" title="Nothing yet" />
 	{:else if !rows.length}
 		<!-- Honest about which of the two emptinesses this is: the run did publish
 		     events, this reading just excludes all of them. Showing the same
 		     "nothing yet" copy here would blame the run for a filter. -->
-		<EmptyState
-			icon={ICON.filter}
-			tone="tool"
-			title="Nothing in this reading"
-			note="The run published {all.length} events and none of them survive this filter. Switch to all to see the wire itself, folded text deltas included."
-		/>
+		<EmptyState icon={ICON.filter} tone="tool" title="{all.length} events, none in this reading" />
 	{:else}
 		<div bind:this={scroller} class="rows">
 			{#each rows as row (row.key)}
 				<div class="row" class:laned={Boolean(row.lane)} style:--tone="var({row.tone})">
 					<span class="co-num t">{(row.at / 1000).toFixed(1)}</span>
-					<span class="tick" aria-hidden="true"></span>
-					<span class="label">{row.label}</span>
+					<!-- A tool call gets its own glyph and everything else gets the tick.
+					     Both occupy the same 11px column, so the rows still line up and
+					     the marked ones are the ones worth finding. -->
+					{#if row.icon}
+						<span class="glyph" aria-hidden="true">
+							<HugeiconsIcon icon={row.icon} size={11} />
+						</span>
+					{:else}
+						<span class="tick" aria-hidden="true"></span>
+					{/if}
+					<span class="label" title={row.hint}>{row.label}</span>
 					{#if row.detail}<span class="detail">{row.detail}</span>{/if}
 				</div>
 			{/each}
@@ -283,13 +384,25 @@
 		color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
 	}
 
+	/* Both marks are centred in an 11px column so the labels align whether or
+	   not a row carries a glyph. */
 	.tick {
 		flex: none;
-		width: 4px;
+		width: 11px;
 		height: 4px;
 		border-radius: 1px;
 		background: var(--tone);
 		opacity: 0.85;
+		background-clip: content-box;
+		padding: 0 3.5px;
+	}
+
+	.glyph {
+		flex: none;
+		display: inline-flex;
+		align-self: center;
+		color: var(--tone);
+		opacity: 0.9;
 	}
 
 	.label {

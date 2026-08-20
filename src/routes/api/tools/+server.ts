@@ -3,6 +3,7 @@ import { json } from '@sveltejs/kit';
 import { standardSchemaToJSONSchema } from '@mastra/core/schema';
 import { createResearchTools } from '$lib/agent/tools';
 import { createImageTools } from '$lib/agent/image-tools';
+import { createWritingTools } from '$lib/agent/writing-tools';
 
 /**
  * What the agent *has*, as opposed to what it did.

@@ -23,6 +23,18 @@
 	 * one lightness, which is exactly what makes neighbouring hues collapse into
 	 * each other when they are stacked inside a bar eight pixels wide.
 	 *
+	 * ── The axis is the empty state ─────────────────────────────────────────
+	 * With no turns this used to be the words `no tokens spent yet` and nothing
+	 * else, so the instrument that should be easiest to recognise — a bar chart —
+	 * was indistinguishable from a failed render. The baseline rule and the price
+	 * are drawn unconditionally now: a chart with an axis and no bars is a chart
+	 * reading zero, which is what it is.
+	 *
+	 * Bars are also capped in width. `flex: 1 1 0` alone gave a two-turn run two
+	 * 400px slabs in a wide flank, which reads as a diagram of something else
+	 * entirely; capped, they stack from the left along an axis that runs the
+	 * whole width, and the run visibly has room to grow into.
+	 *
 	 * ── The overlap that makes this arithmetic ──────────────────────────────
 	 * `cached` is a part of `input` and `reasoning` is a part of `output` — that
 	 * is how the provider reports them. Stacking all five as siblings
@@ -76,37 +88,32 @@
 </script>
 
 <div class="spend">
-	{#if !bars.length}
-		<span class="idle">no tokens spent yet</span>
-	{:else}
-		<div class="plot" role="img" aria-label="{tokens(sum)} tokens across {bars.length} turns">
-			{#each bars as b (b.key)}
-				<!--
-					The column is full height and the bar sits in it.
+	<div class="plot" role="img" aria-label="{tokens(sum)} tokens across {bars.length} turns">
+		{#each bars as b (b.key)}
+			<!--
+				The column is full height and the bar sits in it.
 
-					Two reasons. A two-token turn is a one-pixel bar and effectively
-					unhoverable, so the readout would be unreachable on exactly the turns
-					you are checking *because* they are cheap; and the bar itself has to
-					clip its own segments to stay rounded, so the hover target cannot
-					live inside it. Height is a share of the tallest turn rather than of
-					the box — normalising each bar to itself would draw every turn the
-					same height, which is the one thing this instrument must not do.
-				-->
-				<div class="col" title="{tokens(b.total)} tokens · {usd(b.cost)}">
-					<div class="bar" style:height="{(b.total / peak) * 100}%">
-						{#each b.segments as s (s.key)}
-							<span class="seg" style:--tone="var({s.tone})" style:flex-grow={s.n}></span>
-						{/each}
-					</div>
+				Two reasons. A two-token turn is a one-pixel bar and effectively
+				unhoverable, so the readout would be unreachable on exactly the turns
+				you are checking *because* they are cheap; and the bar itself has to
+				clip its own segments to stay rounded, so the hover target cannot
+				live inside it. Height is a share of the tallest turn rather than of
+				the box — normalising each bar to itself would draw every turn the
+				same height, which is the one thing this instrument must not do.
+			-->
+			<div class="col" title="{tokens(b.total)} tokens · {usd(b.cost)}">
+				<div class="bar" style:height="{(b.total / peak) * 100}%">
+					{#each b.segments as s (s.key)}
+						<span class="seg" style:--tone="var({s.tone})" style:flex-grow={s.n}></span>
+					{/each}
 				</div>
-			{/each}
-		</div>
+			</div>
+		{/each}
+	</div>
 
-		<div class="foot">
-			<span class="co-num total">{tokens(sum)}</span>
-			<span class="co-num money">{usd(spent)}</span>
-		</div>
-	{/if}
+	<div class="foot">
+		<span class="co-num money" class:zero={!spent}>{usd(spent)}</span>
+	</div>
 </div>
 
 <style>
@@ -127,7 +134,10 @@
 		min-height: 0;
 		display: flex;
 		align-items: flex-end;
+		justify-content: flex-start;
 		gap: 2px;
+		/* The axis, and the whole empty state. A hairline per `docs/UI.md`. */
+		border-bottom: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
 	}
 
 	.col {
@@ -135,6 +145,8 @@
 		/* Never disappears: a turn that cost something must leave a mark, however
 		   many turns are sharing the width. */
 		min-width: 1px;
+		/* Never becomes a slab either — see the note at the top. */
+		max-width: 34px;
 		height: 100%;
 		display: flex;
 		align-items: flex-end;
@@ -146,7 +158,7 @@
 		   own output is the part that grows off the top. */
 		display: flex;
 		flex-direction: column-reverse;
-		border-radius: 1.5px;
+		border-radius: 1.5px 1.5px 0 0;
 		overflow: hidden;
 		transition: height 400ms ease;
 		opacity: 0.9;
@@ -175,23 +187,15 @@
 		flex: none;
 		display: flex;
 		align-items: baseline;
-		gap: 0.5rem;
 		font-size: 0.5rem;
 		letter-spacing: 0.04em;
-		color: var(--muted-foreground);
 	}
 	.money {
-		margin-left: auto;
 		color: color-mix(in oklab, var(--co-tok-out) 80%, var(--muted-foreground));
+		transition: color 240ms ease;
 	}
-
-	.idle {
-		margin: auto 0 0;
-		font-family: var(--font-mono);
-		font-size: 0.5rem;
-		letter-spacing: 0.09em;
-		text-transform: uppercase;
-		color: var(--muted-foreground);
-		opacity: 0.55;
+	/* Zero is a reading, but it is not news. */
+	.money.zero {
+		color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
 	}
 </style>

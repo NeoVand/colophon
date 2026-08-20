@@ -53,6 +53,7 @@ export async function respond({
 	toolCallId,
 	approve,
 	reason,
+	edited,
 	onEvent,
 	onError
 }: {
@@ -60,12 +61,14 @@ export async function respond({
 	toolCallId: string;
 	approve: boolean;
 	reason?: string;
+	/** The reader's rewrite, for a tool whose arguments they were allowed to edit. */
+	edited?: unknown;
 } & RunHandlers): Promise<void> {
 	await consume(
 		fetch('/api/agent/approve', {
 			method: 'POST',
 			headers: { 'content-type': 'application/json' },
-			body: JSON.stringify({ runId, toolCallId, approve, reason })
+			body: JSON.stringify({ runId, toolCallId, approve, reason, edited })
 		}),
 		{ onEvent, onError }
 	);

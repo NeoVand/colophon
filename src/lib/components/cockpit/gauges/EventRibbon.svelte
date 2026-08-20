@@ -24,12 +24,27 @@
 	 * for: one error among twenty bookkeeping events is a minority by
 	 * construction and is the only thing in the bucket worth seeing.
 	 *
-	 * ── Scenery, and why it is inert ────────────────────────────────────────
-	 * This runs the full width *behind* the rest of the cockpit. Ticks are spans
-	 * with `pointer-events: none`, never buttons: a row of a hundred focusable
-	 * marks under every other instrument would put a hundred tab stops in front
-	 * of the composer and swallow clicks meant for the gauges on top of it.
-	 * Selecting an event is the timeline's job, in the working layout.
+	 * ── Why an empty run still draws ────────────────────────────────────────
+	 * This used to be dimmed to 28% and floated behind the other instruments as
+	 * scenery, with a `no events yet` caption in the middle. On a fresh page that
+	 * combination rendered as *nothing at all* — a faint caption at roughly 11%
+	 * effective opacity smeared across the top of two live gauges — which is most
+	 * of why the cockpit read as a broken screen rather than as an alternative
+	 * view. Scenery needs a room to be scenery in, and a 400px flank is not one.
+	 *
+	 * So the empty state is a drawing, not a sentence: every column paints a short
+	 * neutral stub, and the stubs in a row are a **horizon line**. Events raise
+	 * the columns they land in and colour them. A run with nothing in it is a flat
+	 * horizon, which is a reading; a caption saying "no events yet" is not.
+	 *
+	 * Height carries density, colour carries kind. The two are independent, so a
+	 * quiet stretch containing one error is a short red column rather than a
+	 * column that has to choose between saying "rare" and saying "bad".
+	 *
+	 * ── Still inert ─────────────────────────────────────────────────────────
+	 * Ticks are spans with `pointer-events: none`, never buttons: a row of a
+	 * hundred focusable marks would put a hundred tab stops in front of the
+	 * composer. Selecting an event is the timeline's job, in the working layout.
 	 */
 
 	/** Loud beats common. Ranked by what a reader would want rescued. */
@@ -74,6 +89,9 @@
 	let stripW = $state(0);
 	const COL = 3;
 
+	/** The flat line an empty run draws, as a share of the strip's height. */
+	const FLOOR = 0.14;
+
 	interface Column {
 		kind: string;
 		n: number;
@@ -98,6 +116,15 @@
 		}
 		return out;
 	});
+
+	/** The busiest bucket, which every other column's height is read against. */
+	const peak = $derived(Math.max(1, ...cols.map((c) => c.n)));
+
+	/* A column that caught even one event clears the horizon by a visible step
+	   rather than by a fraction of a pixel — the reading is "something happened
+	   here", and a 1px difference from the floor does not say that. */
+	const heightOf = (c: Column) =>
+		c.n ? FLOOR + (1 - FLOOR) * (0.34 + 0.66 * (c.n / peak)) : FLOOR;
 </script>
 
 <div
@@ -107,59 +134,48 @@
 	aria-label="{rows.length} events over time"
 >
 	{#each cols as c, i (i)}
-		<span
-			class="tick"
-			style:background={c.kind ? `var(${TONE[c.kind] ?? '--co-model'})` : 'transparent'}
-		></span>
+		<span class="col">
+			<i
+				class="tick"
+				class:on={c.n > 0}
+				style:height="{heightOf(c) * 100}%"
+				style:background={c.kind ? `var(${TONE[c.kind] ?? '--co-model'})` : undefined}
+			></i>
+		</span>
 	{/each}
-	{#if !rows.length}
-		<span class="idle">no events yet</span>
-	{/if}
 </div>
 
 <style>
 	.ribbon {
-		position: relative;
 		height: 100%;
 		width: 100%;
 		min-width: 0;
 		min-height: 0;
 		display: flex;
-		align-items: stretch;
+		/* Grown from a centre line rather than from a baseline. A run is a
+		   horizon, and a horizon has weather above and below it. */
+		align-items: center;
 		/* No gap. At any interesting density the gaps become the picture. */
 		overflow: hidden;
-		/*
-			Faded at both ends and top and bottom instead of clipped to a rectangle.
-
-			A hard-edged strip is a box, and the cockpit's rule is that separation
-			comes from tone rather than from edges. The mask lets the horizon end in
-			the page instead of against a line, which is what keeps it reading as
-			scenery rather than as one more panel.
-		*/
-		mask-image:
-			linear-gradient(to bottom, transparent, black 32%, black 68%, transparent),
-			linear-gradient(to right, transparent, black 4%, black 96%, transparent);
-		mask-composite: intersect;
 		/* Inert on purpose — see the note at the top. */
 		pointer-events: none;
 	}
 
-	.tick {
+	.col {
 		flex: 1 1 0;
 		min-width: 0;
-		opacity: 0.4;
+		height: 100%;
+		display: flex;
+		align-items: center;
 	}
 
-	.idle {
-		position: absolute;
-		inset: 0;
-		display: grid;
-		place-items: center;
-		font-family: var(--font-mono);
-		font-size: 0.5rem;
-		letter-spacing: 0.09em;
-		text-transform: uppercase;
-		color: var(--muted-foreground);
-		opacity: 0.4;
+	.tick {
+		width: 100%;
+		/* The horizon's own colour, overridden inline once a bucket has a kind. */
+		background: color-mix(in oklab, var(--foreground) 14%, transparent);
+		transition: height 300ms ease;
+	}
+	.tick.on {
+		opacity: 0.62;
 	}
 </style>

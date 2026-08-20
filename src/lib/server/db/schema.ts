@@ -139,3 +139,13 @@ export const digests = pgTable(
  * a 0.5 GB budget. The schema file stays on disk for the day real accounts are
  * wanted; it simply is not part of what gets pushed.
  */
+
+/**
+ * The vault's documents live in their own file but are re-exported here.
+ *
+ * `drizzle.config.ts` points at *this* file alone, so a table it cannot reach
+ * from here is invisible to `drizzle-kit push` — it would be silently skipped
+ * and the route that reads it would 500 with "relation does not exist", which
+ * is exactly how this was found.
+ */
+export { documents } from './documents.schema';

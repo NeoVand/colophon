@@ -278,7 +278,16 @@ class Session {
 		this.#controller = undefined;
 	}
 
-	async decide(turn: Turn, approve: boolean): Promise<void> {
+	/**
+	 * Approve or decline a paused tool call.
+	 *
+	 * `edited` exists for `present_outline`, where the reader may rewrite the
+	 * structure before approving. It has to travel all the way to the server
+	 * because `approveToolCall()` takes no argument override — a resumed call
+	 * runs with the arguments the *model* wrote. Without this the outline card
+	 * would offer an edit and then discard it, which is worse than not offering.
+	 */
+	async decide(turn: Turn, approve: boolean, edited?: unknown): Promise<void> {
 		const pending = turn.approval;
 		if (!pending || pending.deciding) return;
 		pending.deciding = true;
@@ -288,6 +297,7 @@ class Session {
 			runId: pending.runId,
 			toolCallId: pending.id,
 			approve,
+			edited,
 			onEvent: (event) => this.#apply(turn, event),
 			onError: (message) => {
 				turn.error = message;

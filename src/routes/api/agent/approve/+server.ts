@@ -1,5 +1,6 @@
 import type { RequestHandler } from './$types';
 import { createColophon } from '$lib/agent/colophon';
+import type { Outline } from '$lib/agent/writing-tools';
 import { isModelConfigured } from '$lib/server/model';
 import { project } from '$lib/agent/events';
 import { error } from '@sveltejs/kit';
@@ -22,15 +23,25 @@ import { error } from '@sveltejs/kit';
 export const POST: RequestHandler = async ({ request }) => {
 	if (!isModelConfigured()) error(503, 'OPENAI_API_KEY is not configured on the server.');
 
-	const { runId, toolCallId, approve, reason } = (await request.json()) as {
+	const { runId, toolCallId, approve, reason, edited } = (await request.json()) as {
 		runId?: string;
 		toolCallId?: string;
 		approve?: boolean;
 		reason?: string;
+		edited?: Outline;
 	};
 	if (!runId || !toolCallId) error(400, 'runId and toolCallId are required.');
 
-	const { agent } = createColophon({});
+	/*
+	 * The edited outline is handed to the agent at construction, not to
+	 * `approveToolCall()`.
+	 *
+	 * That is not a preference — `approveToolCall({ runId, toolCallId })` accepts
+	 * no argument override, so a resumed call executes with whatever the model
+	 * originally wrote. The only place a reader's rewrite can win is inside the
+	 * tool, which reads it from the closure this builds.
+	 */
+	const { agent } = createColophon({ editedOutline: edited });
 	const encoder = new TextEncoder();
 
 	const stream = new ReadableStream<Uint8Array>({

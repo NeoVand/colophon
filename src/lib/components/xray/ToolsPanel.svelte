@@ -1,7 +1,9 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import PanelFrame, { type PanelTab } from '$lib/components/ui/PanelFrame.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import Tooltip from '$lib/components/ui/Tooltip.svelte';
 	import { ICON } from '$lib/icons';
 	import { session } from '$lib/agent/session.svelte';
 	import { callsByTool, failureRate, slowest, totalToolTime } from '$lib/xray/inventory';
@@ -138,8 +140,8 @@
 			<EmptyState
 				icon={ICON.tool}
 				tone="tool"
-				title="No tools are wired up."
-				note="An agent with no tools can only say things. Every tool it gains is also a permanent line item on each request, which is the trade this tab exists to price."
+				title="No tools wired up"
+				note="Every tool is also a permanent line item on every request."
 			/>
 		{:else}
 			<div class="scroll">
@@ -176,25 +178,40 @@
 					{/each}
 				</ul>
 
-				<p class="quiet foot">
-					{kc(fixedTax)} characters go out on every call in a turn, used or not — a twelve-step research
-					turn pays this twelve times. The paper-reader subagent is a tool to the model as well; Mastra
-					writes its schema at run time, so it is not counted here.
+				<!-- The total is already in the header readout, so the paragraph that
+				     repeated it is gone. What survives is the caveat, which cannot be
+				     inferred from any number on screen — parked under a marker. -->
+				<p class="foot">
+					<Tooltip
+						text="The paper-reader subagent is a tool to the model too, but Mastra writes its schema at run time, so it is not counted here."
+					>
+						<span class="marker" aria-label="What this total leaves out">
+							<HugeiconsIcon icon={ICON.about} size={11} />
+						</span>
+					</Tooltip>
 				</p>
 			</div>
 		{/if}
 	{:else if !runs.length}
-		<EmptyState
-			icon={ICON.tool}
-			tone="tool"
-			title="Nothing called yet."
-			note="The other tab is the bill that arrives whether or not anything runs. This one is what it bought — which tool did the work, which kept failing, and where the seconds went."
-		/>
+		<EmptyState icon={ICON.tool} tone="tool" title="Nothing called yet" />
 	{:else}
 		<div class="scroll">
+			<!--
+				"Summed, not elapsed" was a footnote nobody read, sitting four rows
+				below the number it qualifies; it now hangs off that number. The
+				delegation count came up from the same footnote — a subagent's cost is
+				a second context window rather than a call, so it is tallied in crew
+				and only pointed at from here.
+			-->
 			<p class="co-num summary">
-				{runs.length} call{runs.length === 1 ? '' : 's'} · {ms(spent)} inside tools{#if failed}
-					· <span class="bad">{Math.round(failed * 100)}% failed</span>{/if}
+				{runs.length} call{runs.length === 1 ? '' : 's'} ·
+				<Tooltip
+					text="Summed, not elapsed — searches are dispatched together, so this can exceed the turn holding it."
+				>
+					<span>{ms(spent)} inside tools</span>
+				</Tooltip>{#if failed}
+					· <span class="bad">{Math.round(failed * 100)}% failed</span>{/if}{#if delegations}
+					· {delegations} in crew{/if}
 			</p>
 
 			<ul class="rows">
@@ -230,13 +247,6 @@
 					{/each}
 				</ul>
 			{/if}
-
-			<p class="quiet foot">
-				Tool time is summed, not elapsed — searches are dispatched together, so this can exceed the
-				turn that contains it.{#if delegations}
-					{delegations} delegation{delegations === 1 ? '' : 's'} are counted in crew instead: a subagent's
-					cost is a second context window, not a call.{/if}
-			</p>
 		</div>
 	{/if}
 </PanelFrame>
@@ -371,7 +381,17 @@
 		text-wrap: pretty;
 	}
 	.foot {
-		margin-top: 0.6rem;
+		margin: 0.6rem 0 0;
+	}
+
+	/* Dim to the point of being furniture until it is wanted: the caveat matters
+	   to whoever is checking the arithmetic and to nobody else. */
+	.marker {
+		color: color-mix(in oklab, var(--muted-foreground) 45%, transparent);
+		transition: color 150ms ease;
+	}
+	.marker:hover {
+		color: var(--muted-foreground);
 	}
 
 	.err {

@@ -124,8 +124,8 @@
 		<EmptyState
 			icon={ICON.memory}
 			tone="memory"
-			title="No store attached, so nothing survives"
-			note="Working memory needs somewhere to live. Without a database Colophon still answers, but every conversation starts from the same blank page — which is exactly the behaviour this panel exists to make visible."
+			title="No store attached"
+			note="Every conversation starts from the same blank page."
 		/>
 	{:else if error}
 		<p class="err pad">{error}</p>
@@ -134,16 +134,16 @@
 			icon={ICON.memory}
 			tone="memory"
 			title="Nothing learned yet"
-			note="Colophon writes this itself as it works out what you care about. It is scoped to you rather than to this thread — so what lands here is still here in a conversation you have not started yet."
+			note="Scoped to you, not to this thread — it outlives the conversation."
 		/>
 	{:else if open}
 		<div class="body"><Prose text={text ?? ''} /></div>
 	{:else}
+		<!-- Closed, the panel is still a readout: which fields the profile has not
+		     filled in is the one fact worth showing without opening it. -->
 		<p class="quiet pad">
-			A profile it wrote itself, carried into every new conversation.
-			{#if empty.length}
-				Still blank: {empty.join(', ').toLowerCase()}.
-			{/if}
+			Carried into every new conversation.{#if empty.length}
+				Still blank: {empty.join(', ').toLowerCase()}.{/if}
 		</p>
 	{/if}
 </PanelFrame>

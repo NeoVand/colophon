@@ -142,9 +142,7 @@
 	{#if !event}
 		<div class="empty">
 			<HugeiconsIcon icon={ICON.inspect} size={18} />
-			<p>
-				Pick an event to see what it carried — the arguments as written, the result as returned.
-			</p>
+			<p>Pick an event.</p>
 		</div>
 	{:else}
 		<p class="headline">{headline}</p>

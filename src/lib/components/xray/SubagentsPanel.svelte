@@ -161,8 +161,8 @@
 		<EmptyState
 			icon={ICON.subagent}
 			tone="subagent"
-			title="Nothing delegated yet."
-			note="A subagent runs its own loop in its own context window. Everything it reads is billed once and discarded with that window — only its reply comes back, which is how a paper can be read whole without this conversation carrying the full text on every turn afterwards."
+			title="Nothing delegated yet"
+			note="What a subagent reads is billed to its own window and thrown away; only the reply comes back."
 		/>
 	{:else}
 		<div class="scroll">
@@ -216,14 +216,9 @@
 				{/each}
 			</ul>
 
-			{#if totals.read}
-				<p class="quiet foot">
-					The left number is what the subagent's own window was billed, summed over every step it
-					took; it went away with the window. The right one joined this conversation and is re-sent
-					on every call that follows. That is the whole trade, and it pays only while the gap stays
-					wide.
-				</p>
-			{/if}
+			<!-- The trade used to be spelled out here in four lines. It is already
+			     drawn: the track's width is what was read, the ink is what came
+			     back, and the tooltip on each track names both. -->
 		</div>
 	{/if}
 </PanelFrame>
@@ -344,16 +339,5 @@
 		margin: 0.3rem 0 0;
 		font-size: 0.5625rem;
 		color: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
-	}
-
-	.quiet {
-		margin: 0.6rem 0 0;
-		font-size: 0.6875rem;
-		line-height: 1.5;
-		color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
-		text-wrap: pretty;
-	}
-	.foot {
-		margin-top: 0.7rem;
 	}
 </style>

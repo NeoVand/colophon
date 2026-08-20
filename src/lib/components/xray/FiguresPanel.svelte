@@ -163,10 +163,8 @@
 		<EmptyState
 			icon={ICON.figure}
 			tone="user"
-			title="Nothing drawn this run."
-			note="Ask for an illustration and it appears here. It is the one tool that spends rather than
-				reads, so the run stops and shows you the brief it wrote — word for word, before it is
-				sent — and what you approve is the literal prompt rather than a summary of one."
+			title="Nothing drawn yet"
+			note="The one tool that spends rather than reads, so it stops and asks first."
 		/>
 	{:else}
 		<div class="scroll">

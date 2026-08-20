@@ -17,6 +17,17 @@
 	 * it is sorted largest-first, because the useful reading there is which one
 	 * or two bands dominate.
 	 *
+	 * ── The empty ring is still a ring ──────────────────────────────────────
+	 * This used to swap the whole drawing for the words `nothing sent yet`, which
+	 * meant the instrument a fresh page shows first was a five-word caption in an
+	 * empty box. A gauge that vanishes when its reading is zero teaches you to
+	 * distrust the screen rather than the run.
+	 *
+	 * The track circle is drawn unconditionally now and the arcs paint onto it,
+	 * so zero is a reading — an unfilled ring, an em dash, `idle` — in the same
+	 * shape the loaded state uses. Nothing moves when the first request lands
+	 * except the parts that measured something.
+	 *
 	 * ── Why there is no headroom arc ────────────────────────────────────────
 	 * harnessXray's ring sweeps the model's input *limit*, so the unpainted part
 	 * of the circle is the room left. Colophon cannot honestly draw that: the
@@ -73,57 +84,76 @@
 	const rest = $derived(Math.max(0, merged.length - key.length));
 
 	const toneOf = (kind: PartKind) => `var(${TONE[kind] ?? '--co-gate'})`;
+
+	/**
+	 * The gauge's own width, which decides whether the key gets to exist.
+	 *
+	 * The flank runs from about 400px to 1200px and this instrument takes a share
+	 * of a shared row, so its box can be 150px or 500px. Below the threshold the
+	 * key is four rows of clipped mono that name nothing; above it the key is
+	 * what stops a wide box being a circle with a dead margin beside it. Measured
+	 * rather than guessed from a media query, because the breakpoint that matters
+	 * is this element's width and not the window's.
+	 */
+	let boxW = $state(0);
+	const showKey = $derived(boxW >= 190 && key.length > 0);
 </script>
 
-<div class="ring">
-	{#if !arcs.length}
-		<span class="idle">nothing sent yet</span>
-	{:else}
-		<svg
-			viewBox="-50 -50 100 100"
-			preserveAspectRatio="xMidYMid meet"
-			role="img"
-			aria-label="The outgoing request, by band"
-		>
-			<!--
-				Only the arcs rotate, not the whole SVG.
+<div class="ring" class:solo={!showKey} bind:clientWidth={boxW}>
+	<svg
+		viewBox="-50 -50 100 100"
+		preserveAspectRatio="xMidYMid meet"
+		role="img"
+		aria-label="The outgoing request, by band"
+	>
+		<!--
+			Only the arcs rotate, not the whole SVG.
 
-				Rotating the <svg> is the one-line way to start the sweep at twelve
-				o'clock, and it takes the text with it — counter-rotating each label
-				then fights `text-anchor` and lands the numbers off centre. A group of
-				nothing but circles is rotationally symmetric, so rotating that is free
-				and the text below stays in an untouched coordinate system.
-			-->
-			<g transform="rotate(-90)">
-				<circle class="track" r={R} />
-				{#each arcs as a (a.kind)}
-					{#if a.share > 0}
-						<circle
-							class="arc"
-							r={R}
-							stroke={toneOf(a.kind)}
-							stroke-dasharray="{a.share * C} {C}"
-							stroke-dashoffset={-a.offset * C}
-						>
-							<title>{a.kind} — {Math.round(a.share * 100)}% of the request</title>
-						</circle>
-					{/if}
-				{/each}
-			</g>
-			<text class="big" y="-1">{billed ? tokens(billed) : '—'}</text>
-			<text class="sub" y="8">call {ctx?.call ?? 0}</text>
-		</svg>
+			Rotating the <svg> is the one-line way to start the sweep at twelve
+			o'clock, and it takes the text with it — counter-rotating each label
+			then fights `text-anchor` and lands the numbers off centre. A group of
+			nothing but circles is rotationally symmetric, so rotating that is free
+			and the text inside stays in an untouched coordinate system.
+		-->
+		<g transform="rotate(-90)">
+			<circle class="track" r={R} />
+			{#each arcs as a (a.kind)}
+				{#if a.share > 0}
+					<circle
+						class="arc"
+						r={R}
+						stroke={toneOf(a.kind)}
+						stroke-dasharray="{a.share * C} {C}"
+						stroke-dashoffset={-a.offset * C}
+					>
+						<title>{a.kind} — {Math.round(a.share * 100)}% of the request</title>
+					</circle>
+				{/if}
+			{/each}
+		</g>
+		<text class="big" y="-1">{billed ? tokens(billed) : '—'}</text>
+		<text class="sub" y="8">{ctx ? `${merged.length} bands` : 'idle'}</text>
+	</svg>
 
+	{#if showKey}
 		<ul class="key">
 			{#each key as b (b.kind)}
 				<li>
-					<i style:background={toneOf(b.kind)}></i>
 					<span class="name">{b.kind}</span>
+					<!-- The bar is what makes this fill a wide box. A four-row legend of
+					     short mono words leaves most of a 500px cell empty; the same four
+					     rows with a share bar between the name and the number use every
+					     pixel of it and add the reading the ring is bad at — comparing two
+					     bands that are nowhere near each other on the circle. -->
+					<span class="bar"
+						><i style:width="{Math.max(2, b.share * 100)}%" style:background={toneOf(b.kind)}
+						></i></span
+					>
 					<b class="co-num">{Math.round(b.share * 100)}%</b>
 				</li>
 			{/each}
 			{#if rest}
-				<li class="more">+{rest} more</li>
+				<li class="more">+{rest}</li>
 			{/if}
 		</ul>
 	{/if}
@@ -132,16 +162,26 @@
 <style>
 	.ring {
 		height: 100%;
+		width: 100%;
 		display: flex;
 		align-items: center;
-		gap: 0.5rem;
+		gap: 0.6rem;
 		min-width: 0;
 		min-height: 0;
 		overflow: hidden;
 	}
+	/* Without a key there is nothing to sit beside, so the ring takes the middle
+	   rather than hugging the left edge with a void to its right. */
+	.ring.solo {
+		justify-content: center;
+	}
 
 	svg {
 		height: 100%;
+		/* `max-width` rather than a fixed width: the viewBox is square, so in a box
+		   narrower than it is tall the ring would otherwise overflow and be clipped
+		   by the instrument. `meet` shrinks it to fit instead. */
+		max-width: 100%;
 		flex: 0 1 auto;
 		min-width: 0;
 	}
@@ -174,14 +214,15 @@
 	}
 
 	.key {
-		flex: 1;
+		flex: 1 1 0;
 		min-width: 0;
 		margin: 0;
 		padding: 0;
 		list-style: none;
 		display: flex;
 		flex-direction: column;
-		gap: 0.15rem;
+		justify-content: center;
+		gap: 0.22rem;
 		font-family: var(--font-mono);
 		font-size: 0.5rem;
 		letter-spacing: 0.06em;
@@ -192,38 +233,40 @@
 	.key li {
 		display: flex;
 		align-items: center;
-		gap: 0.3rem;
+		gap: 0.4rem;
 		min-width: 0;
-	}
-	.key i {
-		flex: none;
-		width: 5px;
-		height: 5px;
-		border-radius: 1px;
 	}
 	.key .name {
-		min-width: 0;
+		flex: none;
+		/* Fixed measure so the bars start on one line — the bars are the thing
+		   being compared, and bars that begin at four different offsets cannot be. */
+		width: 7.5ch;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;
 	}
+	.key .bar {
+		flex: 1 1 0;
+		min-width: 0;
+		height: 4px;
+		border-radius: 999px;
+		background: color-mix(in oklab, var(--foreground) 6%, transparent);
+		overflow: hidden;
+	}
+	.key .bar i {
+		display: block;
+		height: 100%;
+		border-radius: 999px;
+		transition: width 400ms ease;
+	}
 	.key b {
-		margin-left: auto;
+		flex: none;
+		width: 3.5ch;
+		text-align: right;
 		font-weight: 500;
 		color: color-mix(in oklab, var(--foreground) 75%, transparent);
 	}
 	.more {
 		opacity: 0.6;
-		padding-left: 8px;
-	}
-
-	.idle {
-		margin: auto;
-		font-family: var(--font-mono);
-		font-size: 0.5rem;
-		letter-spacing: 0.09em;
-		text-transform: uppercase;
-		color: var(--muted-foreground);
-		opacity: 0.55;
 	}
 </style>

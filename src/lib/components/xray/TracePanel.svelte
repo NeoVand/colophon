@@ -145,15 +145,15 @@
 		<EmptyState
 			icon={ICON.trace}
 			tone="model"
-			title="Tracing is off."
-			note={`${reason || 'COLOPHON_TRACING is not set.'} Nothing is being recorded and nothing is being lost — spans are held in the server's memory for the last few runs and never written down. Turn it on to watch a run's shape.`}
+			title="Tracing is off"
+			note={reason || 'COLOPHON_TRACING is not set.'}
 		/>
 	{:else if !trace.rows.length}
 		<EmptyState
 			icon={ICON.trace}
 			tone="model"
-			title="Nothing timed yet."
-			note="A span is one interval of work with a name on it — the agent run, a model call, the tool inside that. Stacked on a shared clock they show what a duration cannot: whether nine seconds was one slow model or six readers that were meant to run at once and queued instead. Latency has a shape, and it is rarely the one you would guess."
+			title="Nothing timed yet"
+			note="On a shared clock, nine seconds shows as one slow model or six readers that queued."
 		/>
 	{:else if view === 'flame'}
 		<ul class="rows">
@@ -250,15 +250,13 @@
 					<p class="attr quiet">No attributes recorded on this span.</p>
 				{/each}
 			{:else}
+				<!-- Idle, the strip is a legend for the ink beside it plus whatever is
+				     wrong with this trace. Both are facts about what is on screen, so
+				     neither is prose that can be cut. -->
 				<p class="quiet">
-					Hover a bar for its attributes. Solid is time the span spent itself; hollow is time it
-					spent waiting on something below it.
-					{#if trace.open}
-						{trace.open} span{trace.open === 1 ? ' has' : 's have'} not closed.
-					{/if}
-					{#if truncated}
-						This run outran the collector's cap, so the tail is missing.
-					{/if}
+					Hover a bar. Solid is its own time, hollow is waiting.{#if trace.open}
+						{trace.open} span{trace.open === 1 ? ' has' : 's have'} not closed.{/if}{#if truncated}
+						Truncated at the collector's cap.{/if}
 				</p>
 			{/if}
 		</div>

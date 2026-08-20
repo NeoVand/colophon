@@ -1,7 +1,8 @@
 import { createTool } from '@mastra/core/tools';
 import { z } from 'zod';
 import { searchPapers } from './retrieval';
-import { fetchPaper } from './paper';
+import { fetchPaper, articleOnly } from './paper';
+import { extractFigures, extractPaperTitle, figurePageUrl, normaliseId } from './figures';
 import { SourceRegistry, formatCitation, type Source } from './sources';
 
 /**
@@ -172,6 +173,134 @@ export function createResearchTools(options: ToolOptions = {}): ResearchTools {
 		}
 	});
 
+	/**
+	 * The paper's own pictures.
+	 *
+	 * This is the tool that makes a review look like a paper rather than an
+	 * essay about one. Everything else here returns text; this returns the
+	 * figure the authors chose to publish, under the caption they wrote for it.
+	 *
+	 * ── Why the store is reached by dynamic import ──────────────────────────
+	 * `figure-fetch` pulls in the blob store, which pulls in Postgres. Importing
+	 * that at module scope would put a database in the graph of every test that
+	 * only wanted to check a citation refusal, and of the workflow module that
+	 * never stores a byte. Loading it inside `execute` keeps the cost where the
+	 * work is.
+	 */
+	const extract_figures = createTool({
+		id: 'extract_figures',
+		description:
+			"Pull the REAL figures out of a paper — the publisher's own image files, under the " +
+			"paper's own captions — and store them under /figures/. An extracted figure is " +
+			'EVIDENCE: it is what the authors chose to show. A generated one is decoration. Prefer ' +
+			'this over generate_image whenever the point is to show what a paper actually reported, ' +
+			"and embed the result with ![caption](path). Reads arXiv's HTML edition, which exists " +
+			'for roughly 2024 onward; a paper without one returns no figures rather than a ' +
+			'substitute.',
+		inputSchema: z.object({
+			arxivId: z.string().describe('arXiv id, e.g. 2404.14082. Any version suffix is ignored.'),
+			max: z
+				.number()
+				.int()
+				.min(1)
+				.max(12)
+				.default(4)
+				.describe('How many to take, in document order. A review rarely needs more than two.')
+		}),
+		execute: async ({ arxivId, max }) => {
+			const id = normaliseId(arxivId);
+			const pageUrl = figurePageUrl(id);
+
+			let response: Response | undefined;
+			try {
+				response = await fetch(pageUrl);
+			} catch {
+				response = undefined;
+			}
+			if (!response?.ok) {
+				return {
+					count: 0,
+					figures: [],
+					note:
+						`arXiv:${id} has no HTML edition, which is normal before 2024. Its figures cannot ` +
+						`be extracted — describe them from the text, or use generate_image and say the ` +
+						`figure is an illustration rather than the paper's own.`
+				};
+			}
+
+			const html = await response.text();
+			// Furniture first: arXiv's own navigation carries images, and without
+			// this a paper's "figures" can begin with the site logo.
+			const found = extractFigures(articleOnly(html), response.url || pageUrl);
+
+			/*
+			 * Registered at `listed`, deliberately not at `read`.
+			 *
+			 * Holding a paper's figures is enough to attribute a figure to it and
+			 * not enough to make a claim about its argument — that is what
+			 * `fetch_paper` is for, and `register` only ever raises depth, so a
+			 * paper already read stays read. Registering at `read` here would let
+			 * a run that never opened the prose cite it for the prose, which is
+			 * the one thing this app exists to make impossible.
+			 */
+			const known = registry.get(id);
+			registry.register({
+				id,
+				title: known?.title || extractPaperTitle(html) || id,
+				authors: known?.authors ?? [],
+				year: known?.year,
+				url: known?.url ?? `https://arxiv.org/abs/${id}`,
+				arxivId: id,
+				depth: 'listed',
+				via: 'extract_figures'
+			});
+
+			if (!found.length) {
+				return {
+					count: 0,
+					figures: [],
+					note: `The HTML edition of arXiv:${id} contains no figures.`
+				};
+			}
+
+			const { storeFigure } = await import('$lib/server/figure-fetch');
+			const stored: { path: string; caption: string }[] = [];
+			const skipped: string[] = [];
+			let halted = '';
+
+			for (const figure of found.slice(0, max)) {
+				try {
+					const result = await storeFigure(id, figure);
+					if (result.ok) stored.push({ path: result.figure.path, caption: result.figure.caption });
+					else skipped.push(result.reason);
+				} catch (error) {
+					// A full blob store stops everything, not just this figure — but
+					// the figures already stored are real and must still come back.
+					halted = error instanceof Error ? error.message : String(error);
+					break;
+				}
+			}
+
+			return {
+				count: stored.length,
+				figures: stored,
+				note: [
+					stored.length
+						? `Embed with ![caption](path). Attribute each one in its caption text — ` +
+							`"Figure from arXiv:${id}" — and embed only a figure that carries a claim the ` +
+							`prose needs.`
+						: `Found ${found.length} figures in arXiv:${id} but stored none.`,
+					`arXiv:${id} is citable as a listed source; call fetch_paper before claiming ` +
+						`anything about what it argues.`,
+					skipped.length ? `Skipped ${skipped.length}: ${skipped.slice(0, 3).join('; ')}.` : '',
+					halted
+				]
+					.filter(Boolean)
+					.join(' ')
+			};
+		}
+	});
+
 	const cite = createTool({
 		id: 'cite',
 		description:
@@ -232,7 +361,7 @@ export function createResearchTools(options: ToolOptions = {}): ResearchTools {
 
 	return {
 		registry,
-		tools: { search_papers, fetch_paper, cite, bibliography }
+		tools: { search_papers, fetch_paper, extract_figures, cite, bibliography }
 	};
 }
 
@@ -245,5 +374,17 @@ export function createResearchTools(options: ToolOptions = {}): ResearchTools {
  */
 export function createReaderTools(registry: SourceRegistry): ResearchTools {
 	const full = createResearchTools({ registry, excerptChars: SUBAGENT_EXCERPT_CHARS });
-	return { registry, tools: { fetch_paper: full.tools.fetch_paper } };
+	// Reading and figures, and nothing else. The earlier version was reading
+	// alone, on the argument that a subagent with a reply contract "should not be
+	// able to wander" — which is right about *search* and wrong about figures. A
+	// reader that has the paper open is exactly the thing best placed to bring
+	// back its central figure, and extract_figures cannot wander: it can only
+	// return assets from the paper it was already given.
+	return {
+		registry,
+		tools: {
+			fetch_paper: full.tools.fetch_paper,
+			extract_figures: full.tools.extract_figures
+		}
+	};
 }

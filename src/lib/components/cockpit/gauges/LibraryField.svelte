@@ -19,12 +19,26 @@
 	 * because depth only ever increases: a paper met again in a search has not
 	 * become less known.
 	 *
-	 * Drawn as an SVG on a fixed grid with `preserveAspectRatio`, which is what
-	 * makes it fit any box the layout gives it without a scrollbar or a media
-	 * query. The grid starts at 8×3 and only grows once the papers outnumber it,
-	 * so the dots stay the same size through a normal run — a gauge whose marks
-	 * change size every time a search returns is one you have to re-read rather
-	 * than glance at.
+	 * ── The graticule ───────────────────────────────────────────────────────
+	 * The empty field used to be an empty `<svg>` and the words `nothing
+	 * retrieved yet` — visually a blank box, which is the single worst thing an
+	 * instrument can be, because a blank box and a broken box look identical.
+	 *
+	 * So the grid's *slots* are drawn: a lattice of faint pinpricks, always
+	 * present, which papers ink in as they arrive. This is a graticule, not
+	 * fabricated data — the same claim a dial's tick marks make. It says "marks
+	 * appear here", which is true, and it never says how many are coming.
+	 *
+	 * ── Filling the box ─────────────────────────────────────────────────────
+	 * The grid used to be a fixed 8×3-ish shape scaled with `meet`, so in a cell
+	 * twice as wide as that ratio the dots shrank to fit the height and left a
+	 * dead margin down both sides. The column count is now derived from the box's
+	 * measured aspect, so the lattice is roughly the shape of the space it is
+	 * given at any flank width and `meet` has almost nothing left to trim.
+	 *
+	 * Measuring is safe here — no `$effect` writes what it reads. The wrapper's
+	 * size comes from the flex row above it and never from the SVG inside it, so
+	 * the aspect cannot chase itself.
 	 */
 
 	const MIN_COLS = 8;
@@ -51,10 +65,27 @@
 			.map(({ p }) => p)
 	);
 
-	// Wider than tall: these boxes are always wider than tall, and a square grid
-	// in a wide box wastes the width it was given.
-	const cols = $derived(Math.max(MIN_COLS, Math.ceil(Math.sqrt(ordered.length * 2.6))));
-	const rows = $derived(Math.max(MIN_ROWS, Math.ceil(ordered.length / cols)));
+	let boxW = $state(0);
+	let boxH = $state(0);
+
+	/* Clamped hard at both ends: a 1px-tall box during the first layout pass
+	   would otherwise ask for a thousand-column lattice. */
+	const aspect = $derived(boxW > 0 && boxH > 0 ? Math.min(6, Math.max(0.7, boxW / boxH)) : 2.6);
+
+	const cols = $derived(
+		Math.max(MIN_COLS, Math.ceil(Math.sqrt(Math.max(1, ordered.length) * aspect)))
+	);
+	const rows = $derived(
+		Math.max(MIN_ROWS, Math.ceil(ordered.length / cols), Math.round(cols / aspect))
+	);
+
+	/** The lattice. Index is the key: positions are fixed, papers are not. */
+	const slots = $derived(
+		Array.from({ length: cols * rows }, (_, i) => ({
+			cx: (i % cols) * CELL + CELL / 2,
+			cy: Math.floor(i / cols) * CELL + CELL / 2
+		}))
+	);
 
 	const dots = $derived(
 		ordered.map((p, i) => ({
@@ -69,32 +100,33 @@
 </script>
 
 <div class="field">
-	<svg
-		viewBox="0 0 {cols * CELL} {rows * CELL}"
-		preserveAspectRatio="xMidYMid meet"
-		role="img"
-		aria-label="{papers.length} papers seen, {readCount} read, {citedCount} cited"
-	>
-		{#each dots as d (d.p.id)}
-			<g class="dot" class:read={d.p.depth === 'read'} class:cited={d.p.cited}>
-				<title>{d.p.title} — {d.p.cited ? 'cited' : d.p.depth}</title>
-				{#if d.p.cited}
-					<circle class="halo" cx={d.cx} cy={d.cy} r="4.4" />
-				{/if}
-				<circle class="core" cx={d.cx} cy={d.cy} r="2.6" />
-			</g>
-		{/each}
-	</svg>
+	<div class="plot" bind:clientWidth={boxW} bind:clientHeight={boxH}>
+		<svg
+			viewBox="0 0 {cols * CELL} {rows * CELL}"
+			preserveAspectRatio="xMidYMid meet"
+			role="img"
+			aria-label="{papers.length} papers seen, {readCount} read, {citedCount} cited"
+		>
+			{#each slots as s, i (i)}
+				<circle class="slot" cx={s.cx} cy={s.cy} r="0.9" />
+			{/each}
+			{#each dots as d (d.p.id)}
+				<g class="dot" class:read={d.p.depth === 'read'} class:cited={d.p.cited}>
+					<title>{d.p.title} — {d.p.cited ? 'cited' : d.p.depth}</title>
+					{#if d.p.cited}
+						<circle class="halo" cx={d.cx} cy={d.cy} r="4.4" />
+					{/if}
+					<circle class="core" cx={d.cx} cy={d.cy} r="2.6" />
+				</g>
+			{/each}
+		</svg>
+	</div>
 
-	{#if papers.length}
-		<ul class="key">
-			<li><i class="listed"></i>{papers.length} listed</li>
-			<li><i class="read"></i>{readCount} read</li>
-			<li><i class="cited"></i>{citedCount} cited</li>
-		</ul>
-	{:else}
-		<span class="idle">nothing retrieved yet</span>
-	{/if}
+	<ul class="key">
+		<li><i class="listed"></i><span class="co-num">{papers.length}</span> listed</li>
+		<li><i class="read"></i><span class="co-num">{readCount}</span> read</li>
+		<li><i class="cited"></i><span class="co-num">{citedCount}</span> cited</li>
+	</ul>
 </div>
 
 <style>
@@ -109,10 +141,20 @@
 		overflow: hidden;
 	}
 
-	svg {
+	.plot {
 		flex: 1;
 		min-height: 0;
+		min-width: 0;
+	}
+	svg {
+		height: 100%;
 		width: 100%;
+	}
+
+	/* The lattice. Faint enough that a field of them is a texture rather than a
+	   reading, present enough that the instrument is never a blank rectangle. */
+	.slot {
+		fill: color-mix(in oklab, var(--foreground) 13%, transparent);
 	}
 
 	.core {
@@ -147,7 +189,7 @@
 		list-style: none;
 		display: flex;
 		flex-wrap: wrap;
-		gap: 0.05rem 0.6rem;
+		gap: 0.05rem 0.7rem;
 		font-family: var(--font-mono);
 		font-size: 0.5rem;
 		letter-spacing: 0.06em;
@@ -176,14 +218,7 @@
 		border-color: var(--co-accent);
 		box-shadow: 0 0 0 1.5px color-mix(in oklab, var(--co-accent) 30%, transparent);
 	}
-
-	.idle {
-		flex: none;
-		font-family: var(--font-mono);
-		font-size: 0.5rem;
-		letter-spacing: 0.09em;
-		text-transform: uppercase;
-		color: var(--muted-foreground);
-		opacity: 0.55;
+	.key .co-num {
+		color: color-mix(in oklab, var(--foreground) 75%, transparent);
 	}
 </style>

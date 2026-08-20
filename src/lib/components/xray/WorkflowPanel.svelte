@@ -158,12 +158,8 @@
 		<EmptyState
 			icon={ICON.workflow}
 			tone="subagent"
-			title="Nothing has run through the pipeline yet."
-			note="Deep research runs as a few named stages rather than one long prompt{stages
-				? ` — ${stages} —`
-				: ','} and each one is timed here as it starts and finishes. Splitting the work is what
-			buys the things a prompt cannot: several papers read at once, each in a context window of
-			its own that is then thrown away, and a place the run can stop and ask you something."
+			title="Nothing has run yet"
+			note={stages || 'Deep research runs as a few named stages, each timed as it goes.'}
 		/>
 	{:else}
 		<ol>
@@ -189,9 +185,7 @@
 		{#if topologyError}
 			<!-- The rows still came from the run, so this is a missing caption
 			     rather than a missing panel — say which, rather than looking empty. -->
-			<p class="quiet">
-				Descriptions unavailable — could not read the pipeline: {topologyError}
-			</p>
+			<p class="quiet">No descriptions: {topologyError}</p>
 		{/if}
 	{/if}
 </PanelFrame>

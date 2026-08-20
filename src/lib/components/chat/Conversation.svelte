@@ -4,6 +4,7 @@
 	import Prose from '$lib/components/Prose.svelte';
 	import ToolCallCard from './ToolCallCard.svelte';
 	import ApprovalCard from './ApprovalCard.svelte';
+	import OutlineCard, { type Outline } from './OutlineCard.svelte';
 	import Preamble from './Preamble.svelte';
 
 	/**
@@ -71,7 +72,22 @@
 				{/if}
 
 				{#if turn.approval}
-					<ApprovalCard {turn} ondecide={(ok) => session.decide(turn, ok)} />
+					<!--
+						An outline is the one approval whose arguments the reader may
+						rewrite, so it gets its own card. Everything else is approve or
+						decline on the literal brief the model wrote.
+					-->
+					{#if turn.approval.name === 'present_outline'}
+						{@const outline = turn.approval.args as Outline}
+						<OutlineCard
+							title={outline?.title ?? ''}
+							sections={outline?.sections ?? []}
+							onapprove={(edited) => session.decide(turn, true, edited)}
+							ondecline={() => session.decide(turn, false)}
+						/>
+					{:else}
+						<ApprovalCard {turn} ondecide={(ok) => session.decide(turn, ok)} />
+					{/if}
 				{/if}
 
 				{#if turn.error}

@@ -149,7 +149,7 @@
 	<div class="column">
 		<div class="row">
 			<Menu items={actions} align="start">
-				{#snippet trigger()}<span class="plus">+</span>{/snippet}
+				{#snippet trigger()}<HugeiconsIcon icon={ICON.add} size={15} />{/snippet}
 			</Menu>
 
 			<textarea
@@ -165,15 +165,23 @@
 
 			<!-- One button, two jobs: while the run is streaming the only thing
 			     worth pressing here is the one that stops it. -->
-			<button
-				class="act"
-				style:--ink={running ? 'var(--muted-foreground)' : 'var(--co-user)'}
-				onclick={() => (running ? session.stop() : send())}
-				disabled={!running && (waiting || !draft.trim())}
-				aria-label={running ? 'Stop the run' : 'Send'}
+			<Tooltip
+				text={draft.length
+					? `${draft.length.toLocaleString()} characters · roughly ${estimate.toLocaleString()} tokens. The billed count arrives with the turn.`
+					: running
+						? 'Stop the run'
+						: 'Return sends · shift-return for a newline'}
 			>
-				<HugeiconsIcon icon={running ? ICON.close : ICON.run} size={15} />
-			</button>
+				<button
+					class="act"
+					style:--ink={running ? 'var(--muted-foreground)' : 'var(--co-user)'}
+					onclick={() => (running ? session.stop() : send())}
+					disabled={!running && (waiting || !draft.trim())}
+					aria-label={running ? 'Stop the run' : 'Send'}
+				>
+					<HugeiconsIcon icon={running ? ICON.stop : ICON.send} size={15} />
+				</button>
+			</Tooltip>
 		</div>
 
 		{#if attaching}
@@ -193,26 +201,23 @@
 			</div>
 		{/if}
 
-		<div class="foot">
-			{#if mode === 'research'}
-				<button class="chip co-eyebrow" onclick={() => setMode('chat')} aria-label="Leave research">
-					<HugeiconsIcon icon={ICON.search} size={10} /> deep research
-					<HugeiconsIcon icon={ICON.close} size={9} />
-				</button>
-			{/if}
-
-			<span class="co-eyebrow hint">
-				{waiting ? 'decide above to continue' : 'return sends · shift return for a newline'}
-			</span>
-
-			{#if draft.length}
-				<Tooltip text="Roughly four characters to a token. The billed count arrives with the turn.">
-					<span class="co-num est">
-						{draft.length.toLocaleString()} chars · ≈{estimate.toLocaleString()} tokens (estimate)
-					</span>
-				</Tooltip>
-			{/if}
-		</div>
+		{#if mode === 'research' || waiting}
+			<div class="foot">
+				{#if mode === 'research'}
+					<button
+						class="chip co-eyebrow"
+						onclick={() => setMode('chat')}
+						aria-label="Leave research"
+					>
+						<HugeiconsIcon icon={ICON.search} size={10} /> deep research
+						<HugeiconsIcon icon={ICON.close} size={9} />
+					</button>
+				{/if}
+				{#if waiting}
+					<span class="co-eyebrow hint">decide above to continue</span>
+				{/if}
+			</div>
+		{/if}
 	</div>
 </div>
 
@@ -233,18 +238,66 @@
 		align-items: center;
 		gap: 0.5rem;
 	}
+	/* Centred, not baseline-aligned: two square buttons flanking a field that
+	   grows have no shared baseline, and flex-end pins them to the bottom of a
+	   six-line draft. */
 	.row {
 		align-items: flex-end;
 	}
-	/* A typed glyph, not an icon: the registry has no plus, and "+" in the mono
-	   face sits beside the readouts more honestly than a borrowed symbol. */
-	.plus {
-		font-family: var(--font-mono);
-		font-size: 1rem;
-		line-height: 1.4;
+	.row .field {
+		padding-bottom: 0.3rem;
 	}
+	/*
+		The two flanking controls are the same object: identical square hit areas,
+		identically centred, so the field sits exactly between them. Before this
+		the "+" was a typed glyph inside a menu trigger carrying its own padding,
+		next to a real icon button carrying different padding — so the two could
+		not line up however the row was aligned, and the plus visibly floated.
+
+		`:global` on the trigger because the class lands on the Menu component's
+		own button, which Svelte does not stamp with this file's scoping hash.
+	*/
+	.row :global(.trigger),
+	.act {
+		display: inline-flex;
+		align-items: center;
+		justify-content: center;
+		flex: none;
+		width: 1.75rem;
+		height: 1.75rem;
+		padding: 0;
+		border: 0;
+		border-radius: 4px;
+		background: transparent;
+		color: var(--muted-foreground);
+		cursor: pointer;
+		transition:
+			color 150ms ease,
+			background-color 150ms ease;
+	}
+	.row :global(.trigger:hover),
+	.act:hover:not(:disabled) {
+		background: color-mix(in oklab, var(--muted) 70%, transparent);
+		color: var(--foreground);
+	}
+	.act {
+		color: var(--ink, var(--muted-foreground));
+	}
+	.act:disabled {
+		opacity: 0.35;
+		cursor: default;
+	}
+
+	/*
+		A line of text on the page, not a box.
+
+		`border: 0` is not cosmetic here — @tailwindcss/forms gives every textarea
+		a 1px border by default, and without this the composer wears a rectangle
+		that contradicts the entire arrangement around it.
+	*/
 	.field {
 		flex: 1;
+		min-width: 0;
 		min-height: 1.6rem;
 		max-height: 20rem;
 		resize: none;
@@ -256,44 +309,20 @@
 		font-size: 0.95rem;
 		line-height: 1.6;
 	}
-	.act,
-	.mini,
-	.chip {
-		border: 0;
-		background: transparent;
-		cursor: pointer;
-		transition:
-			color 150ms ease,
-			opacity 150ms ease;
+	.field::placeholder {
+		color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
 	}
-	/* The ink follows the job — the colour the conversation already gives your
-	   own turns while it sends, plain chrome while it stops. Set in the markup
-	   where the state lives, so the two readings cannot fight over specificity. */
-	.act {
-		flex: none;
-		display: inline-flex;
-		align-items: center;
-		justify-content: center;
-		width: 1.5rem;
-		height: 1.5rem;
-		color: color-mix(in oklab, var(--ink) 80%, transparent);
+	.field:disabled {
+		opacity: 0.5;
 	}
-	.act:hover:not(:disabled) {
-		color: var(--ink);
-	}
+
+	/* The arXiv attach row: appears under the field, same rhythm. */
 	.attach {
 		margin-top: 0.45rem;
 	}
-	.attach,
-	.foot {
-		padding-left: 1.7rem;
-	}
-	.foot {
-		min-height: 1rem;
-		margin-top: 0.3rem;
-	}
 	.tag {
-		color: var(--co-library);
+		flex: none;
+		color: color-mix(in oklab, var(--co-library) 75%, var(--muted-foreground));
 	}
 	.id {
 		flex: 1;
@@ -306,41 +335,46 @@
 		font-size: 0.75rem;
 	}
 	.mini {
-		padding: 0.1rem 0.2rem;
+		flex: none;
+		border: 0;
+		background: transparent;
+		padding: 0.1rem 0.3rem;
+		border-radius: 3px;
 		color: var(--muted-foreground);
 		font-family: var(--font-mono);
-		font-size: 0.625rem;
+		font-size: 0.6875rem;
+		cursor: pointer;
 	}
-	/* The mode is a standing choice, so it stays visible with its own way out —
-	   a flag you can only unset from inside a menu is a trap. */
-	.chip {
-		display: inline-flex;
-		align-items: center;
-		gap: 0.3rem;
-		padding: 0;
-		color: var(--co-subagent);
-	}
-	.mini:hover:not(:disabled),
-	.chip:hover {
+	.mini:hover:not(:disabled) {
 		color: var(--foreground);
 	}
-	.field:disabled,
-	.act:disabled,
 	.mini:disabled {
 		opacity: 0.35;
 		cursor: default;
 	}
-	/* Pushed right on its own, so the foot needs no spacer element. */
-	.hint {
-		margin-left: auto;
+
+	.foot {
+		margin-top: 0.4rem;
 	}
-	.field::placeholder,
-	.id::placeholder,
 	.hint {
-		color: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
+		color: color-mix(in oklab, var(--co-approval) 85%, transparent);
 	}
-	.est {
-		font-size: 0.625rem;
-		color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+
+	/* The research-mode marker. A chip rather than a toggle, because the way out
+	   of the mode should be the same object that says you are in it. */
+	.chip {
+		display: inline-flex;
+		align-items: center;
+		gap: 0.25rem;
+		flex: none;
+		padding: 0.1rem 0.35rem;
+		border: 1px solid color-mix(in oklab, var(--co-accent) 35%, transparent);
+		border-radius: 3px;
+		background: color-mix(in oklab, var(--co-accent) 10%, transparent);
+		color: var(--co-accent);
+		cursor: pointer;
+	}
+	.chip:hover {
+		background: color-mix(in oklab, var(--co-accent) 18%, transparent);
 	}
 </style>

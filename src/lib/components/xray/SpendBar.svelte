@@ -64,7 +64,7 @@
 			icon={ICON.spend}
 			tone="tok-new"
 			title="Nothing spent yet"
-			note="The first turn splits the bill four ways. The total is the least useful number in it — a conversation that is mostly cached input is cheap however large it looks, and one that is mostly reasoning is expensive in a way a shorter question will not fix."
+			note="A conversation that is mostly cached input is cheap however large it looks."
 		/>
 	{:else}
 		<div class="content">

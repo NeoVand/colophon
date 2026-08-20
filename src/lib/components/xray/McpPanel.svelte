@@ -124,24 +124,22 @@
 		<p class="err pad">{fetchError}</p>
 	{:else if !configured}
 		<!--
-			The empty state does the teaching, because for most readers this panel
-			will never have anything in it — and "no MCP servers" is worth
-			understanding, whereas an empty box is not.
+			The note earns its line: for most readers this panel is never populated,
+			and what MCP *is* cannot be guessed from the words "no servers". The
+			shape of the config is shown rather than described — a sample is shorter
+			than the sentence explaining it.
 		-->
 		<EmptyState
 			icon={ICON.mcp}
 			tone="tool"
 			title="No servers connected"
-			note="The Model Context Protocol is how an agent picks up tools it did not ship with. You point it at a server, it asks what that server can do, and those tools join the ones built in — no deploy, and no code here that knows their names."
+			note="How an agent picks up tools it did not ship with."
 		/>
 		<div class="hint">
 			{#if configError}
 				<p class="err">{configError}</p>
-				<p class="quiet">Until that parses, Colophon runs on its own four tools.</p>
 			{:else}
-				<p class="quiet">
-					Set <code>MCP_SERVERS</code> to a JSON array and every tool each server offers appears here.
-				</p>
+				<p class="quiet"><code>MCP_SERVERS</code>, a JSON array:</p>
 				<pre class="example">{EXAMPLE}</pre>
 			{/if}
 		</div>
@@ -194,9 +192,10 @@
 			</ul>
 
 			{#if toolCount}
+				<!-- A readout, not a caption: the prefix is already visible on every id
+				     above, so the line only has to say where else it shows up. -->
 				<p class="quiet foot">
-					Each keeps its <code>{PREFIX}</code> prefix everywhere it appears, so a chip in the conversation
-					says which tools came from outside.
+					Prefixed <code>{PREFIX}</code> everywhere, chat included.
 				</p>
 			{/if}
 		</div>

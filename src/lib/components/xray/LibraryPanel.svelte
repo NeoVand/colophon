@@ -1,9 +1,11 @@
 <script lang="ts">
-	import { session } from '$lib/agent/session.svelte';
+	import { session, type KnownPaper } from '$lib/agent/session.svelte';
 	import { flip } from 'svelte/animate';
 	import { ICON } from '$lib/icons';
 	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import Toolbar from '$lib/components/ui/Toolbar.svelte';
+	import IconButton from '$lib/components/ui/IconButton.svelte';
 
 	/**
 	 * Every paper this run has met, and how well it knows each one.
@@ -45,16 +47,98 @@
 	 * you *see happen* rather than a list that has quietly rearranged itself.
 	 */
 	const rank = (p: { cited: boolean; depth: string }) => (p.cited ? 0 : p.depth === 'read' ? 1 : 2);
+
+	/**
+	 * …but the order found is still a reading worth having.
+	 *
+	 * Promotion answers "what did the run use"; insertion order answers "what did
+	 * that search actually return, and in what rank" — which is the question when
+	 * you suspect the run picked the wrong paper off the top of a list. One
+	 * toggle, because these are two readings of one set and not two panels.
+	 */
+	let byPromotion = $state(true);
+
 	const ordered = $derived(
-		papers
-			.map((p, i) => ({ p, i }))
-			.sort((a, b) => rank(a.p) - rank(b.p) || a.i - b.i)
-			.map(({ p }) => p)
+		byPromotion
+			? papers
+					.map((p, i) => ({ p, i }))
+					.sort((a, b) => rank(a.p) - rank(b.p) || a.i - b.i)
+					.map(({ p }) => p)
+			: papers
 	);
+
+	const cited = $derived(papers.filter((p) => p.cited));
+
+	/**
+	 * What a references list should contain: cited if anything was cited,
+	 * otherwise everything read.
+	 *
+	 * A run that read nine papers to cite two should not paste nine. When nothing
+	 * is cited yet the read set is the honest fallback — it is at least the set
+	 * someone actually opened — and when neither exists the button is dead rather
+	 * than handing over an empty clipboard, which looks like a broken copy.
+	 */
+	const consulted = $derived(cited.length ? cited : papers.filter((p) => p.depth === 'read'));
+
+	/** Author-year-title-url, one per line. Not BibTeX: this is for a message. */
+	function reference(p: KnownPaper): string {
+		const who = p.authors?.length
+			? `${p.authors[0]}${p.authors.length > 1 ? ' et al.' : ''}`
+			: 'Unknown';
+		return [`${who}${p.year ? ` (${p.year})` : ''}.`, `${p.title}.`, p.url ?? p.id]
+			.join(' ')
+			.trim();
+	}
+
+	let copied = $state(false);
+	let flash: ReturnType<typeof setTimeout> | undefined;
+
+	async function copyBibliography(): Promise<void> {
+		await navigator.clipboard.writeText(consulted.map(reference).join('\n'));
+		copied = true;
+		clearTimeout(flash);
+		flash = setTimeout(() => (copied = false), 1200);
+	}
+
+	/**
+	 * Open every cited paper.
+	 *
+	 * Browsers allow this only because the click is the user's own, and most will
+	 * still permit just the first window unless popups are allowed for the site —
+	 * so the count is in the tooltip, and a blocked second tab is the browser's
+	 * decision to explain rather than ours to work around.
+	 */
+	function openCited(): void {
+		for (const p of cited) if (p.url) window.open(p.url, '_blank', 'noopener,noreferrer');
+	}
 
 	/** Hosted in another frame's tab group; that frame draws the header. */
 	let { bare = false }: { bare?: boolean } = $props();
 </script>
+
+{#snippet orderTools()}
+	<IconButton
+		icon={ICON.filter}
+		label="order found"
+		active={!byPromotion}
+		onclick={() => (byPromotion = !byPromotion)}
+	/>
+{/snippet}
+
+{#snippet takeTools()}
+	<IconButton
+		icon={copied ? ICON.check : ICON.copy}
+		label="copy bibliography"
+		disabled={!consulted.length}
+		onclick={copyBibliography}
+	/>
+	<IconButton
+		icon={ICON.external}
+		label={cited.length === 1 ? 'open the cited paper' : `open ${cited.length} cited papers`}
+		disabled={!cited.length}
+		onclick={openCited}
+	/>
+{/snippet}
 
 <PanelFrame
 	{bare}
@@ -65,13 +149,12 @@
 		? `${papers.length} seen · ${readCount} read · ${citedCount} cited`
 		: undefined}
 >
+	{#snippet actions()}
+		<Toolbar groups={[orderTools, takeTools]} />
+	{/snippet}
+
 	{#if !papers.length}
-		<EmptyState
-			icon={ICON.library}
-			tone="library"
-			title="Nothing retrieved yet"
-			note="A search puts papers here — and the mark beside each says whether it was merely listed, actually read, or cited. The distance between those three is the honest measure of a run."
-		/>
+		<EmptyState icon={ICON.library} tone="library" title="Nothing retrieved yet" />
 	{:else}
 		<ul>
 			{#each ordered as paper (paper.id)}

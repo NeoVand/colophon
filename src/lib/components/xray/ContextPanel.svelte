@@ -4,6 +4,8 @@
 	import { ICON } from '$lib/icons';
 	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import Toolbar from '$lib/components/ui/Toolbar.svelte';
+	import IconButton from '$lib/components/ui/IconButton.svelte';
 
 	/**
 	 * What is actually in the window.
@@ -60,6 +62,49 @@
 	function kb(chars: number): string {
 		return chars >= 1000 ? `${(chars / 1000).toFixed(1)}k` : String(chars);
 	}
+
+	/**
+	 * Percent or tokens, never both.
+	 *
+	 * They answer different questions and the panel is too narrow to ask both at
+	 * once. A share says which row *dominates* — the reading that matters while a
+	 * turn is running and the numbers are moving. A token count is what you put in
+	 * a message to someone: "the schemas are 4,100 tokens on every call" is an
+	 * argument, "the schemas are 31%" is an observation.
+	 */
+	let unit = $state<'share' | 'tokens'>('share');
+
+	let copied = $state(false);
+	let flash: ReturnType<typeof setTimeout> | undefined;
+
+	/**
+	 * The decomposition, as JSON.
+	 *
+	 * The whole point of this panel is that it reads the literal request off the
+	 * provider's own fetch, and a number you cannot get out of the page is a
+	 * number you cannot check. So this copies the rows as data — including the
+	 * billed total the shares were apportioned from, without which the token
+	 * columns cannot be reconstructed or argued with.
+	 */
+	async function copyJson(): Promise<void> {
+		if (!ctx) return;
+		const payload = {
+			call: ctx.call,
+			bytes: ctx.bytes,
+			inputTokens,
+			parts: rows.map((r) => ({
+				kind: r.kind,
+				label: r.label,
+				chars: r.chars,
+				share: r.share,
+				tokens: r.tokens
+			}))
+		};
+		await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+		copied = true;
+		clearTimeout(flash);
+		flash = setTimeout(() => (copied = false), 1200);
+	}
 </script>
 
 <PanelFrame
@@ -68,12 +113,30 @@
 	tone="memory"
 	readout={ctx ? `call ${ctx.call} · ${kb(ctx.bytes)}B` : undefined}
 >
+	{#snippet actions()}
+		<Toolbar>
+			<IconButton
+				icon={ICON.spend}
+				label="absolute tokens"
+				active={unit === 'tokens'}
+				disabled={!inputTokens}
+				onclick={() => (unit = unit === 'share' ? 'tokens' : 'share')}
+			/>
+			<IconButton
+				icon={copied ? ICON.check : ICON.copy}
+				label="copy as JSON"
+				disabled={!ctx}
+				onclick={copyJson}
+			/>
+		</Toolbar>
+	{/snippet}
+
 	{#if !ctx}
 		<EmptyState
 			icon={ICON.context}
 			tone="memory"
 			title="Nothing sent yet"
-			note="This is the literal request, read off the provider's own fetch — not something the agent was asked to report about itself. The first call fills it, and the bands say what you are paying to re-send."
+			note="Read off the provider's own fetch, not from the agent."
 		/>
 	{:else}
 		<div class="bar" role="img" aria-label="What the outgoing request is made of">
@@ -92,8 +155,11 @@
 				<li style:--tone="var({TONE[row.kind] ?? '--co-gate'})">
 					<span class="swatch"></span>
 					<span class="label">{row.label}</span>
-					{#if row.tokens}<span class="co-num tok">{row.tokens.toLocaleString()}</span>{/if}
-					<span class="co-num pct">{Math.round(row.share * 100)}%</span>
+					{#if unit === 'tokens' && row.tokens}
+						<span class="co-num tok">{row.tokens.toLocaleString()}</span>
+					{:else}
+						<span class="co-num pct">{Math.round(row.share * 100)}%</span>
+					{/if}
 				</li>
 			{/each}
 		</ul>
@@ -109,8 +175,7 @@
 				one thing it exists to be trusted on.
 			-->
 			<p class="caveat">
-				{inputTokens.toLocaleString()} billed input tokens, split by size — the provider bills the request
-				whole, so these are attributed rather than measured.
+				{inputTokens.toLocaleString()} billed input tokens, split by size — attributed, not measured.
 			</p>
 		{/if}
 	{/if}
@@ -165,12 +230,18 @@
 		white-space: nowrap;
 		color: var(--muted-foreground);
 	}
+	/* One column, either way — the two readings swap in place, so switching
+	   between them does not shift every label sideways. */
+	.tok,
+	.pct {
+		flex: none;
+		width: 3.4rem;
+		text-align: right;
+	}
 	.tok {
 		color: color-mix(in oklab, var(--foreground) 80%, transparent);
 	}
 	.pct {
-		width: 2.4rem;
-		text-align: right;
 		color: color-mix(in oklab, var(--muted-foreground) 65%, transparent);
 	}
 
