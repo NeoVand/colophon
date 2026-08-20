@@ -1,8 +1,8 @@
 import type { RequestHandler } from './$types';
-import { Agent } from '@mastra/core/agent';
-import { model, isModelConfigured } from '$lib/server/model';
+import { createColophon } from '$lib/agent/colophon';
+import { isModelConfigured } from '$lib/server/model';
 import { project } from '$lib/agent/events';
-import { agentMemory, isStorageConfigured, READER } from '$lib/server/storage';
+import { isStorageConfigured, READER } from '$lib/server/storage';
 import { error } from '@sveltejs/kit';
 
 /**
@@ -66,21 +66,17 @@ export const POST: RequestHandler = async ({ request }) => {
 				// detect a buffering proxy rather than waiting on the model.
 				send('ready', { at: Date.now() });
 
-				// Memory attaches only when there is somewhere to keep it, so the app
-				// still runs statelessly before a database is connected — the same
-				// reasoning that made `db` lazy.
+				// Built per request: the agent carries a source registry that must not
+				// be shared between runs, or one conversation could cite another's
+				// papers. Memory attaches only when there is somewhere to keep it.
+				const { agent } = createColophon({ thread });
 				const remembers = isStorageConfigured() && Boolean(thread);
 
-				const agent = new Agent({
-					id: 'colophon',
-					name: 'Colophon',
-					instructions: 'You are Colophon, a research companion. Answer briefly and precisely.',
-					// Built through the factory on purpose — see src/lib/server/model.ts.
-					model: model(),
-					...(remembers ? { memory: agentMemory() } : {})
-				});
-
 				const result = await agent.stream(prompt, {
+					// Research turns fan out: search, then read several papers, then
+					// write. The default stops well short of that and truncates the
+					// answer mid-argument.
+					maxSteps: 24,
 					// `resource` is constant while `thread` varies: working memory is
 					// resource-scoped, so what Colophon learns about the reader
 					// outlives any single conversation.

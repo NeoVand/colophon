@@ -146,3 +146,22 @@ Updated as milestones land. After a context compaction, read this first.
 
   `OPENALEX_MAILTO` is set to mmv@mit.edu, locally and on Vercel, so the polite
   pool is in effect (~100k/day rather than ~100/day per IP).
+
+- **2026-08-20** — M3 done. The agent researches for real.
+
+  Verified live end to end: `search_papers` → `fetch_paper` → `cite` →
+  `bibliography`, producing a correctly attributed two-sentence summary of a
+  2026 paper it had never seen before. 35.5k input tokens for that turn, 25.6k
+  of them cached.
+
+  **On the citation guarantee:** asked to cite a fabricated paper, the model
+  declined *without calling the tool* — the instructions were enough. That is
+  the desired outcome and proves nothing about the structure, so the refusal is
+  now tested at the tool layer directly: unretrieved ids, plausible-but-absent
+  ids, listed-but-unread papers, and registry isolation between runs.
+
+  `EXCERPT_CHARS` caps a paper at 24k characters in a tool result. A full paper
+  is 40–200 KB and a tool result is re-sent on *every* later turn, so an
+  uncapped read would dominate the bill for the rest of the conversation. The
+  real fix is a paper-reader subagent with its own context window; the cap is
+  what stands in until then.
