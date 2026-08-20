@@ -56,7 +56,7 @@ curl -c jar -X POST "$ORIGIN/login" -H "Origin: $ORIGIN" -d "password=$PASSWORD"
 path degrades honestly: with no key it is never attempted, and `deliveredAt`
 null with `deliveryError` null is the pair's way of saying so (attempted and
 refused sets the error). `/lab/email` renders the real email as `text/html`, so
-the part I *can* check has been checked by looking at it.
+the part I _can_ check has been checked by looking at it.
 
 **The UI foundation landed**: design tokens, four themes, the session store, and
 three X-ray panels — spend, library, events. Verified live against a real run.
@@ -64,10 +64,10 @@ three X-ray panels — spend, library, events. Verified live against a real run.
 Two facts worth keeping:
 
 - **`verdict` is not delivery.** The gate's answer and whether an email arrived
-  are different columns now. A delivery failure is deliberately *not* a sweep
+  are different columns now. A delivery failure is deliberately _not_ a sweep
   failure — the research happened, and marking it failed would un-advance
   `lastSweptAt` and re-read the whole period tomorrow.
-- **The reference list is what was *cited*, not what was read.** Built from
+- **The reference list is what was _cited_, not what was read.** Built from
   `registry.cited()`. Built from `read()` it silently omitted a paper the prose
   attributed, because that paper was cited from its abstract.
 
