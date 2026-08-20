@@ -74,6 +74,16 @@ class Session {
 	/** The current run's id, once the server has told us. */
 	runId = $state('');
 
+	/**
+	 * The most recent outgoing request, decomposed.
+	 *
+	 * One value rather than a history: the question the panel answers is "what
+	 * is in the window *now*", and keeping every call's decomposition for a
+	 * twelve-call research turn would hold a dozen copies of a growing
+	 * conversation in the browser to show one of them.
+	 */
+	context = $state<Extract<ColophonEvent, { k: 'context' }> | undefined>();
+
 	#seq = 0;
 	#startedAt = 0;
 	#controller: AbortController | undefined;
@@ -106,6 +116,7 @@ class Session {
 		this.turns = [];
 		this.events = [];
 		this.papers = [];
+		this.context = undefined;
 		this.#seq = 0;
 	}
 
@@ -160,6 +171,9 @@ class Session {
 				if (!event.failed) absorb(this.papers, event.name ?? tool?.name, event.result);
 				break;
 			}
+			case 'context':
+				this.context = event;
+				break;
 			case 'step':
 				turn.usage = addUsage(turn.usage ?? ZERO, event.usage);
 				break;

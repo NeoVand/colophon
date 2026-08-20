@@ -66,6 +66,8 @@ export function createResearchTools(options: ToolOptions = {}): ResearchTools {
 		description:
 			'Search arXiv and OpenAlex for papers. Returns titles, authors, years, citation counts ' +
 			'and abstracts. Use sort "recency" to find what is new, "relevance" for a topic. ' +
+			'A result marked `seen: true` was already returned by an earlier search in this run — ' +
+			'its abstract is above and is not repeated. It is still citable and still fetchable. ' +
 			'Papers found here can be cited, but only as abstracts — fetch_paper before making any ' +
 			'claim about what a paper actually contains.',
 		inputSchema: z.object({
@@ -75,20 +77,52 @@ export function createResearchTools(options: ToolOptions = {}): ResearchTools {
 		}),
 		execute: async ({ query, limit, sort }) => {
 			const found = await searchPapers(query, { limit, sort });
-			for (const paper of found) registry.register({ ...paper, via: 'search_papers' });
+
+			/*
+			 * A paper met before comes back without its abstract.
+			 *
+			 * Measured, not guessed. A single research turn made four searches on
+			 * near-identical queries and the context panel showed the result: five
+			 * `search_papers — result` rows of ~14,000 tokens each, 48% of a
+			 * 138,000-token request, for 25 distinct papers across 32 result rows.
+			 * Seven of those rows were the same papers described a second and third
+			 * time, and every repeat stayed in the window for every remaining call
+			 * of the turn.
+			 *
+			 * The registry already knows what has been seen, so the repeat carries
+			 * `seen: true` and no abstract. This is not hiding anything: the full
+			 * abstract is earlier in the very same context, which is precisely why
+			 * repeating it buys nothing. The title stays so the ranking of *this*
+			 * search is still readable.
+			 *
+			 * Caching makes the waste cheaper than it looks — that turn was 92%
+			 * cached — but a cached token is not a free token, and 141 kB on the
+			 * wire for every step is latency nobody is caching away.
+			 */
+			const rows = found.map((p) => {
+				const seen = Boolean(registry.get(p.id));
+				registry.register({ ...p, via: 'search_papers' });
+
+				return {
+					id: p.id,
+					title: p.title,
+					...(seen
+						? { seen: true as const }
+						: {
+								authors: p.authors.slice(0, 4),
+								year: p.year,
+								citedBy: p.citedBy,
+								// Bounded: eight full abstracts is already a few thousand
+								// tokens, and this result is re-sent on every later call.
+								abstract: p.summary?.slice(0, 900) ?? ''
+							})
+				};
+			});
 
 			return {
 				count: found.length,
-				papers: found.map((p) => ({
-					id: p.id,
-					title: p.title,
-					authors: p.authors.slice(0, 4),
-					year: p.year,
-					citedBy: p.citedBy,
-					// Bounded: eight full abstracts is already a few thousand tokens,
-					// and this result is re-sent on every later turn.
-					abstract: p.summary?.slice(0, 900) ?? ''
-				}))
+				repeats: rows.filter((r) => 'seen' in r).length,
+				papers: rows
 			};
 		}
 	});

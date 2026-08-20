@@ -8,6 +8,7 @@
 	import EventTimeline from '$lib/components/xray/EventTimeline.svelte';
 	import LibraryPanel from '$lib/components/xray/LibraryPanel.svelte';
 	import SpendBar from '$lib/components/xray/SpendBar.svelte';
+	import ContextPanel from '$lib/components/xray/ContextPanel.svelte';
 
 	/**
 	 * Two columns: the work, and the dissection.
@@ -51,6 +52,8 @@
 		{#if xray}
 			<aside class="flank">
 				<SpendBar />
+				<div class="hr"></div>
+				<div class="slot context"><ContextPanel /></div>
 				<div class="hr"></div>
 				<div class="slot"><LibraryPanel /></div>
 				<div class="hr"></div>
@@ -135,6 +138,13 @@
 	   shows about three of them. Weighted to what each one needs to be useful. */
 	.slot.events {
 		flex-grow: 1.35;
+	}
+
+	/* The context rows are few and fixed in number — one per tool schema plus a
+	   handful — so it needs less than an equal third and giving it one starves
+	   the two that grow. */
+	.slot.context {
+		flex-grow: 0.75;
 	}
 
 	/* Under a certain width two columns is one cramped column and one useless

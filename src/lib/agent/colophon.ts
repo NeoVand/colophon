@@ -99,7 +99,20 @@ function register(agent: Agent): Agent {
 	return agent;
 }
 
-export function createColophon({ thread }: { thread?: string } = {}): ColophonRun {
+export function createColophon({
+	thread,
+	capture
+}: {
+	thread?: string;
+	/**
+	 * The tee'd `fetch` the X-ray's context panel reads.
+	 *
+	 * Optional, and the agent behaves identically with or without it — which is
+	 * the point. Observation is added at the transport, not by changing what the
+	 * agent is or does.
+	 */
+	capture?: typeof globalThis.fetch;
+} = {}): ColophonRun {
 	const research = createResearchTools();
 	const remembers = isStorageConfigured() && Boolean(thread);
 
@@ -114,7 +127,7 @@ export function createColophon({ thread }: { thread?: string } = {}): ColophonRu
 		agents: { paperReader },
 		// Always through the factory: the string and config-object model forms
 		// expose no fetch hook and would silently blind the X-ray. See CLAUDE.md.
-		model: model(),
+		model: model(undefined, capture),
 		tools: { ...research.tools, ...createImageTools().tools },
 		...(remembers ? { memory: agentMemory() } : {})
 	});

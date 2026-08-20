@@ -18,6 +18,14 @@
  * recorded fixtures without a network or a key.
  */
 
+/** One band of the outgoing request. Mirrors `Part` in `context.ts`. */
+export interface ContextPart {
+	kind: string;
+	label: string;
+	chars: number;
+	share: number;
+}
+
 /** Token accounting, normalised. Mastra nests the same numbers three ways. */
 export interface Usage {
 	input: number;
@@ -60,6 +68,24 @@ export type ColophonEvent =
 	 * request.
 	 */
 	| { k: 'approval'; runId: string; id: string; name: string; args: unknown }
+	/**
+	 * The outgoing request, decomposed.
+	 *
+	 * The one event `project()` never produces. Every other kind is a Mastra
+	 * chunk translated; this one comes from a level below, where the provider
+	 * `fetch` was tee'd — so it is assembled by the endpoint and pushed onto the
+	 * same channel rather than derived from anything Mastra publishes. It rides
+	 * here anyway because the client should have one stream to read, not two.
+	 */
+	| {
+			k: 'context';
+			/** Which provider call in this run, from 1. */
+			call: number;
+			model?: string;
+			chars: number;
+			bytes: number;
+			parts: ContextPart[];
+	  }
 	/** A guardrail aborted the run. */
 	| { k: 'tripwire'; reason: string; processor?: string }
 	/** The run finished. */

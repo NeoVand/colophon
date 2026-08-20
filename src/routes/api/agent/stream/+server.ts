@@ -2,6 +2,8 @@ import type { RequestHandler } from './$types';
 import { createColophon } from '$lib/agent/colophon';
 import { isModelConfigured } from '$lib/server/model';
 import { project } from '$lib/agent/events';
+import { createCapture } from '$lib/agent/capture';
+import { decompose } from '$lib/agent/context';
 import { isStorageConfigured, READER } from '$lib/server/storage';
 import { error } from '@sveltejs/kit';
 
@@ -69,7 +71,10 @@ export const POST: RequestHandler = async ({ request }) => {
 				// Built per request: the agent carries a source registry that must not
 				// be shared between runs, or one conversation could cite another's
 				// papers. Memory attaches only when there is somewhere to keep it.
-				const { agent } = createColophon({ thread });
+				// The wire, tee'd. The agent is not told and does not behave
+				// differently; only the transport it was handed is ours.
+				const capture = createCapture();
+				const { agent } = createColophon({ thread, capture: capture.fetch });
 				const remembers = isStorageConfigured() && Boolean(thread);
 
 				const result = await agent.stream(prompt, {
@@ -92,7 +97,38 @@ export const POST: RequestHandler = async ({ request }) => {
 				// two-word answer are ~30 KB, nearly all of it the message history
 				// and the encrypted reasoning blob repeated three ways. Lab mode
 				// wants that; a phone on a train does not.
+				/*
+				 * The context event is emitted from inside the chunk loop rather than
+				 * at the end, and that is the only place it can be.
+				 *
+				 * A request is captured *before* its response streams, so by the time
+				 * the first chunk of call N arrives, call N's body exists. Waiting
+				 * until the run finished would show one context — the last — for a
+				 * turn that made a dozen calls, and the interesting reading is how
+				 * the window grew across them.
+				 *
+				 * `seq` is compared rather than the array length, because the capture
+				 * keeps only the last few requests and its length stops changing
+				 * while `seq` keeps counting.
+				 */
+				let lastContext = 0;
+				const emitContext = () => {
+					const latest = capture.latest();
+					if (!latest || latest.seq === lastContext || !latest.body) return;
+					lastContext = latest.seq;
+					const { model: modelId, parts, chars } = decompose(latest.body);
+					send('event', {
+						k: 'context',
+						call: latest.seq,
+						model: modelId,
+						chars,
+						bytes: latest.bytes,
+						parts
+					});
+				};
+
 				for await (const chunk of result.fullStream) {
+					emitContext();
 					if (detail === 'full') {
 						send('chunk', chunk);
 						continue;
@@ -100,6 +136,7 @@ export const POST: RequestHandler = async ({ request }) => {
 					const event = project(chunk);
 					if (event) send('event', event);
 				}
+				emitContext();
 
 				send('done', { at: Date.now() });
 			} catch (cause) {
