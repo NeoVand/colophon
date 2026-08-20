@@ -23,6 +23,7 @@
 	import ContextPanel from '$lib/components/xray/ContextPanel.svelte';
 	import LibraryPanel from '$lib/components/xray/LibraryPanel.svelte';
 	import FiguresPanel from '$lib/components/xray/FiguresPanel.svelte';
+	import DocumentsPanel from '$lib/components/xray/DocumentsPanel.svelte';
 	import GraphPanel from '$lib/components/xray/GraphPanel.svelte';
 	import ToolsPanel from '$lib/components/xray/ToolsPanel.svelte';
 	import SubagentsPanel from '$lib/components/xray/SubagentsPanel.svelte';
@@ -71,7 +72,7 @@
 	let mode = $state<'chat' | 'research'>('chat');
 
 	/** Which tab each grouped panel is showing. */
-	let gathered = $state('library');
+	let artefacts = $state('library');
 	let machine = $state('graph');
 
 	onMount(() => {
@@ -145,20 +146,31 @@
 						<Pane defaultSize={56} minSize={26}>
 							<PaneGroup direction="vertical" autoSaveId="co:machine" class="group">
 								<Pane defaultSize={40} minSize={16}>
+									<!--
+										Papers met, figures drawn, documents written — one group, because
+										they answer one question: what does this run have to show for
+										itself? `documents` is the only one of the three that outlives the
+										thread, which is exactly why it belongs beside the two that do not.
+										It was written for this flank and then shipped mounted nowhere, so
+										"give it a task and write the paper" had nowhere to land in view.
+									-->
 									<PanelFrame
-										label="gathered"
+										label="artefacts"
 										icon={ICON.library}
 										tone="library"
-										bind:active={gathered}
+										bind:active={artefacts}
 										tabs={[
 											{ id: 'library', label: 'library', icon: ICON.paper },
-											{ id: 'figures', label: 'figures', icon: ICON.figure }
+											{ id: 'figures', label: 'figures', icon: ICON.figure },
+											{ id: 'documents', label: 'documents', icon: ICON.prose }
 										]}
 									>
-										{#if gathered === 'library'}
+										{#if artefacts === 'library'}
 											<LibraryPanel bare />
-										{:else}
+										{:else if artefacts === 'figures'}
 											<FiguresPanel bare />
+										{:else}
+											<DocumentsPanel bare />
 										{/if}
 									</PanelFrame>
 								</Pane>

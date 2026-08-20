@@ -191,16 +191,7 @@
 	{:else if error}
 		<p class="err co-num">{error}</p>
 	{:else if !figures.length}
-		<EmptyState
-			icon={ICON.figure}
-			tone="user"
-			title="No figures yet."
-			note="Colophon draws on request, one brief at a time — and because that is the only tool here
-				that spends rather than reads, it stops and shows you the exact prompt before it sends it.
-				Nothing in this gallery arrived without you saying yes to it first. Storage is capped while
-				the bytes sit in Postgres instead of an object store, which is what keeps a run that decides
-				it needs eight illustrations from eating the database."
-		/>
+		<EmptyState icon={ICON.figure} tone="user" title="No figures yet" />
 	{:else}
 		<ul class="tiles">
 			{#each figures as figure, i (figure.key)}

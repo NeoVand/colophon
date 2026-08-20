@@ -279,12 +279,7 @@
 	{actions}
 >
 	{#if !doc}
-		<EmptyState
-			icon={ICON.prose}
-			title="No document open"
-			note="Notes, drafts and papers share one store, each addressed by a slug that never follows its title — which is why a link pasted into last spring's digest still resolves."
-			{tone}
-		/>
+		<EmptyState icon={ICON.prose} title="No document open" {tone} />
 	{:else}
 		<div class="doc">
 			<header class="head">
@@ -297,12 +292,7 @@
 			</header>
 
 			{#if !source.trim()}
-				<EmptyState
-					icon={ICON.prose}
-					title="Nothing written yet"
-					note="The body is a column in the vault, not a file on one laptop — which is why the paragraph you started on a train is already here."
-					{tone}
-				/>
+				<EmptyState icon={ICON.prose} title="Nothing written yet" {tone} />
 			{:else if view === 'read'}
 				<div class="scroll read">
 					<Prose text={prose} />
