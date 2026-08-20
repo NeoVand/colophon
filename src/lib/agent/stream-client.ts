@@ -23,6 +23,8 @@ export interface RunHandlers {
 
 export interface RunOptions extends RunHandlers {
 	prompt: string;
+	/** Conversation to continue. Omit for a one-shot with no memory. */
+	thread?: string;
 	signal?: AbortSignal;
 }
 
@@ -41,6 +43,7 @@ function parseFrame(frame: string): { name: string; data: string } | null {
 
 export async function run({
 	prompt,
+	thread,
 	signal,
 	onEvent,
 	onReady,
@@ -51,7 +54,7 @@ export async function run({
 	const response = await fetch('/api/agent/stream', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ prompt }),
+		body: JSON.stringify({ prompt, thread }),
 		signal
 	});
 

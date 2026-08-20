@@ -110,3 +110,23 @@ Updated as milestones land. After a context compaction, read this first.
 - **`OPENALEX_MAILTO`** — a contact address raises the OpenAlex limit from
   ~100/day to ~100k/day. Deliberately not defaulted to his address without
   asking, since it is sent to a third party on every search.
+
+- **2026-08-20** — M2 done. Neon connected, Mastra memory persisting, the gate shipped.
+
+  Verified: a second request in the same thread recalls the conversation, and a
+  request in a *brand new thread* still knows the reader's field — that is
+  resource-scoped working memory, and it is the feature the whole "memory is
+  the moat" idea rests on.
+
+  **Three bugs worth remembering:**
+  - `PostgresStore` requires an `id`. Undocumented; without it the constructor
+    throws `MASTRA_STORAGE_PG_INITIALIZATION_FAILED` with "id must be provided".
+    The skill's verifier had flagged @mastra/pg as unverifiable (not installed
+    at the time) — it was right to flag it.
+  - The scaffold's placeholder `DATABASE_URL` in `.env` shadowed the real one in
+    `.env.local`, so `isStorageConfigured()` returned false and memory was
+    silently never attached. Removed the placeholder.
+  - **A patch failed silently.** `str.replace()` on a block prettier had
+    reformatted matched nothing and reported success, so the memory wiring was
+    never actually written while every check passed. Patches now assert their
+    target exists first. This cost more time than the other two combined.

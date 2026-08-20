@@ -2,6 +2,7 @@ import type { RequestHandler } from './$types';
 import { Agent } from '@mastra/core/agent';
 import { model, isModelConfigured } from '$lib/server/model';
 import { project } from '$lib/agent/events';
+import { agentMemory, isStorageConfigured, READER } from '$lib/server/storage';
 import { error } from '@sveltejs/kit';
 
 /**
@@ -33,9 +34,14 @@ export const POST: RequestHandler = async ({ request }) => {
 		error(503, 'OPENAI_API_KEY is not configured on the server.');
 	}
 
-	const { prompt, detail = 'chat' } = (await request.json()) as {
+	const {
+		prompt,
+		detail = 'chat',
+		thread
+	} = (await request.json()) as {
 		prompt?: string;
 		detail?: 'chat' | 'full';
+		thread?: string;
 	};
 	if (!prompt?.trim()) error(400, 'A prompt is required.');
 
@@ -60,15 +66,26 @@ export const POST: RequestHandler = async ({ request }) => {
 				// detect a buffering proxy rather than waiting on the model.
 				send('ready', { at: Date.now() });
 
+				// Memory attaches only when there is somewhere to keep it, so the app
+				// still runs statelessly before a database is connected — the same
+				// reasoning that made `db` lazy.
+				const remembers = isStorageConfigured() && Boolean(thread);
+
 				const agent = new Agent({
-					id: 'colophon-probe',
+					id: 'colophon',
 					name: 'Colophon',
 					instructions: 'You are Colophon, a research companion. Answer briefly and precisely.',
 					// Built through the factory on purpose — see src/lib/server/model.ts.
-					model: model()
+					model: model(),
+					...(remembers ? { memory: agentMemory() } : {})
 				});
 
-				const result = await agent.stream(prompt);
+				const result = await agent.stream(prompt, {
+					// `resource` is constant while `thread` varies: working memory is
+					// resource-scoped, so what Colophon learns about the reader
+					// outlives any single conversation.
+					...(remembers ? { memory: { thread: thread!, resource: READER } } : {})
+				});
 
 				// `fullStream` rather than `textStream`: Mastra publishes ~87 typed
 				// chunk kinds here — tool calls, steps, reasoning, usage — and that

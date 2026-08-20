@@ -3,6 +3,7 @@
 	import { addUsage, type ColophonEvent, type Usage } from '$lib/agent/events';
 	import { tick } from 'svelte';
 	import { resolve } from '$app/paths';
+	import { onMount } from 'svelte';
 
 	interface Turn {
 		role: 'you' | 'colophon';
@@ -19,6 +20,27 @@
 	let busy = $state(false);
 	let controller: AbortController | undefined;
 	let scroller: HTMLDivElement | undefined = $state();
+
+	/**
+	 * The conversation this page is continuing.
+	 *
+	 * Kept in localStorage rather than component state so a reload rejoins the
+	 * same conversation instead of silently starting a new one — the surprise of
+	 * losing a thread to a refresh is worse than any amount of tidiness.
+	 */
+	let thread = $state('');
+
+	onMount(() => {
+		const existing = localStorage.getItem('colophon:thread');
+		thread = existing ?? crypto.randomUUID();
+		if (!existing) localStorage.setItem('colophon:thread', thread);
+	});
+
+	function newThread() {
+		thread = crypto.randomUUID();
+		localStorage.setItem('colophon:thread', thread);
+		turns = [];
+	}
 
 	const ZERO: Usage = { input: 0, output: 0, total: 0, reasoning: 0, cached: 0 };
 
@@ -84,6 +106,7 @@
 		controller = new AbortController();
 		await run({
 			prompt,
+			thread,
 			signal: controller.signal,
 			onEvent: (event) => {
 				apply(turn, event);
@@ -125,9 +148,14 @@
 		<span class="font-mono text-[0.7rem] tracking-widest text-neutral-400 uppercase"
 			>research companion</span
 		>
+		<button
+			onclick={newThread}
+			class="ml-auto font-mono text-[0.7rem] text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+			>new thread</button
+		>
 		<a
 			href={resolve('/lab/probe')}
-			class="ml-auto font-mono text-[0.7rem] text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
+			class="font-mono text-[0.7rem] text-neutral-400 hover:text-neutral-600 dark:hover:text-neutral-200"
 			>lab</a
 		>
 	</header>
