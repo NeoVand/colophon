@@ -50,6 +50,8 @@
 
 	<div class="spacer"></div>
 
+	<a class="link" href={resolve('/vault')}>vault</a>
+
 	<button class="link" onclick={() => session.newThread()}>new thread</button>
 
 	<button class="link" class:on={xray} onclick={onxray} aria-pressed={xray}>x-ray</button>
