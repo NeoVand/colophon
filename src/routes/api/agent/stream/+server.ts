@@ -139,7 +139,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				// The wire, tee'd. The agent is not told and does not behave
 				// differently; only the transport it was handed is ours.
 				const capture = createCapture();
-				const { agent } = createColophon({ thread, capture: capture.fetch });
+				const { agent } = await createColophon({ thread, capture: capture.fetch });
 				const remembers = isStorageConfigured() && Boolean(thread);
 
 				const result = await agent.stream(prompt, {

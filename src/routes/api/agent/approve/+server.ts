@@ -41,7 +41,7 @@ export const POST: RequestHandler = async ({ request }) => {
 	 * originally wrote. The only place a reader's rewrite can win is inside the
 	 * tool, which reads it from the closure this builds.
 	 */
-	const { agent } = createColophon({ editedOutline: edited });
+	const { agent } = await createColophon({ editedOutline: edited });
 	const encoder = new TextEncoder();
 
 	const stream = new ReadableStream<Uint8Array>({

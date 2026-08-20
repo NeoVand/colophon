@@ -65,7 +65,7 @@ const PROMPT = [
 /** Run one turn to completion, draining the stream exactly as the route does. */
 async function turn(remembers: boolean): Promise<{ ms: number; steps: number; text: string }> {
 	const thread = remembers ? `fanout-probe-${remembers}` : undefined;
-	const { agent } = createColophon({ thread });
+	const { agent } = await createColophon({ thread });
 	const began = Date.now();
 
 	const result = await agent.stream(PROMPT, {

@@ -6,6 +6,9 @@ import { createResearchTools, type ResearchTools } from './tools';
 import { createPaperReader } from './paper-reader';
 import { createImageTools } from './image-tools';
 import { createWritingTools, type Outline } from './writing-tools';
+import { COLOPHON_SKILLS } from './skills';
+import { COLOPHON_SCORERS } from './scorers';
+import { isMcpConfigured, toolsForAgent } from '$lib/server/mcp';
 
 /**
  * Colophon itself.
@@ -115,7 +118,7 @@ function register(agent: Agent): Agent {
 	return agent;
 }
 
-export function createColophon({
+export async function createColophon({
 	thread,
 	capture,
 	editedOutline
@@ -140,9 +143,24 @@ export function createColophon({
 	 * agent is or does.
 	 */
 	capture?: typeof globalThis.fetch;
-} = {}): ColophonRun {
+} = {}): Promise<ColophonRun> {
 	const research = createResearchTools();
 	const remembers = isStorageConfigured() && Boolean(thread);
+
+	/*
+	 * Tools from any configured MCP server, merged with the built-ins.
+	 *
+	 * `toolsForAgent` was written for this and then called by nothing, so
+	 * `MCP_SERVERS` populated a *panel* describing servers the agent could not
+	 * reach. A reader could configure an MCP server, watch it turn up green with
+	 * its tools listed, and never once be able to use it — which is a worse
+	 * failure than the feature being absent, because it is indistinguishable
+	 * from the feature working.
+	 *
+	 * This is what makes `createColophon` async. It returns `{}` immediately
+	 * when nothing is configured, so the common path costs one skipped await.
+	 */
+	const mcp = isMcpConfigured() ? await toolsForAgent() : {};
 
 	// Shares the run's registry, so a paper it reads becomes citable by the
 	// parent — the provenance crosses the delegation boundary, the tokens do not.
@@ -153,13 +171,29 @@ export function createColophon({
 		name: 'Colophon',
 		instructions: INSTRUCTIONS,
 		agents: { paperReader },
+		/*
+		 * Skills and scorers, both of which existed, were tested, and were
+		 * attached to nothing.
+		 *
+		 * `skills` is the one that was actively misleading: the opening screen
+		 * counted them and `SkillsPanel` listed them, so the app advertised two
+		 * capabilities the model had no way to reach — there was no `skill` tool
+		 * on any request. Attaching them is what makes that panel a reading of
+		 * the run rather than a description of a file.
+		 *
+		 * `scorers` measure and never refuse; the refusing is `delivery-gate.ts`'s
+		 * job and stays there. See the head of `scorers.ts` for why both exist.
+		 */
+		skills: [...COLOPHON_SKILLS],
+		scorers: COLOPHON_SCORERS,
 		// Always through the factory: the string and config-object model forms
 		// expose no fetch hook and would silently blind the X-ray. See CLAUDE.md.
 		model: model(undefined, capture),
 		tools: {
 			...research.tools,
 			...createImageTools().tools,
-			...createWritingTools({ editedOutline }).tools
+			...createWritingTools({ editedOutline }).tools,
+			...mcp
 		},
 		...(remembers ? { memory: agentMemory() } : {})
 	});

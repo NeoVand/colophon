@@ -1,8 +1,8 @@
 <script lang="ts">
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { ICON } from '$lib/icons';
+	import { onMount } from 'svelte';
 	import { session } from '$lib/agent/session.svelte';
-	import { SKILL_CARDS } from '$lib/agent/skills';
 	import Glyph from './Glyph.svelte';
 
 	/**
@@ -35,48 +35,58 @@
 		onask
 	}: { onask?: (question: string) => void } = $props();
 
-	/*
-	 * The counts, and why one of them is derived and three are not.
+	/**
+	 * The counts, asked of the agent rather than remembered.
 	 *
-	 * Skills come from the registry itself, because `skills.ts` imports nothing
-	 * but `@mastra/core/skills` and SkillsPanel already pulls it into this
-	 * bundle — so adding a skill updates this row for free and can never lie.
+	 * These were three literals and one registry read, under a comment promising
+	 * that "a wrong number on the opening screen is worse than no number at
+	 * all". By the time anyone checked, the screen said five tools when the model
+	 * was shown twelve, and two skills when the agent had none attached at all —
+	 * `COLOPHON_SKILLS` was exported and passed to nothing, so the row was
+	 * counting a file rather than a capability. Both are the same failure: a
+	 * number about the agent that was not read from the agent.
 	 *
-	 * The other three cannot be read the same way. `tools.ts` reaches
-	 * `retrieval.ts`, which imports `$env/dynamic/private`, and
-	 * `research-workflow.ts` is server-side for the same reason; importing
-	 * either here would drag server code into the client bundle to win a number.
-	 * So they are literals, counted from the code rather than remembered, and
-	 * each one names where it was counted — a wrong number on the opening screen
-	 * is worse than no number at all, and this is what makes a change to any of
-	 * these one grep away instead of a silent lie.
+	 * `/api/tools` builds the real agent and reports what it will send, so this
+	 * cannot drift again. The row renders only once the answer arrives — a blank
+	 * space for a few hundred milliseconds is honest, and a placeholder that
+	 * turns out to be wrong is what this is fixing.
 	 *
-	 *   TOOLS      createResearchTools() returns search_papers, fetch_paper,
-	 *              cite and bibliography; createImageTools() adds generate_image.
-	 *              colophon.ts spreads exactly those two sets onto the agent.
-	 *   SUBAGENTS  createPaperReader() — the sole entry in the agent's `agents`.
-	 *   STEPS      createResearchWorkflow() chains scope → search → select →
-	 *              read → write.
+	 * `onMount`, not `$effect`: it writes state it would otherwise depend on,
+	 * which is the shape that produced `effect_update_depth_exceeded` here twice.
 	 */
-	const TOOL_COUNT = 5;
-	const SUBAGENT_COUNT = 1;
-	const STEP_COUNT = 5;
+	interface Counts {
+		tools: number;
+		subagents: number;
+		skills: number;
+	}
+	let counts = $state<Counts | undefined>();
 
-	const COUNTS = [
-		{ n: TOOL_COUNT, one: 'tool', many: 'tools', icon: ICON.tool, tone: 'tool' },
-		{
-			n: SUBAGENT_COUNT,
-			one: 'subagent',
-			many: 'subagents',
-			icon: ICON.subagent,
-			tone: 'subagent'
-		},
-		// Skills and workflow steps have no colour in the legend — they are not
-		// subsystems, they are machinery — so they take the app's own accent
-		// rather than borrowing a meaning that belongs to something else.
-		{ n: SKILL_CARDS.length, one: 'skill', many: 'skills', icon: ICON.skills, tone: 'accent' },
-		{ n: STEP_COUNT, one: 'step', many: 'steps', icon: ICON.workflow, tone: 'accent' }
-	];
+	onMount(async () => {
+		try {
+			const response = await fetch('/api/tools');
+			if (!response.ok) return;
+			counts = ((await response.json()) as { counts?: Counts }).counts;
+		} catch {
+			// The row simply does not appear. It is a flourish, and a run does not
+			// need it — failing quietly beats an error where the thesis should be.
+		}
+	});
+
+	const COUNTS = $derived(
+		counts
+			? [
+					{ n: counts.tools, one: 'tool', many: 'tools', icon: ICON.tool, tone: 'tool' },
+					{
+						n: counts.subagents,
+						one: 'subagent',
+						many: 'subagents',
+						icon: ICON.subagent,
+						tone: 'subagent'
+					},
+					{ n: counts.skills, one: 'skill', many: 'skills', icon: ICON.skills, tone: 'accent' }
+				]
+			: []
+	);
 
 	const QUESTIONS = [
 		'What changed in sparse-autoencoder evals this year?',

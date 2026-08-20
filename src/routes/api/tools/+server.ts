@@ -1,9 +1,6 @@
 import type { RequestHandler } from './$types';
 import { json } from '@sveltejs/kit';
-import { standardSchemaToJSONSchema } from '@mastra/core/schema';
-import { createResearchTools } from '$lib/agent/tools';
-import { createImageTools } from '$lib/agent/image-tools';
-import { createWritingTools } from '$lib/agent/writing-tools';
+import { createColophon } from '$lib/agent/colophon';
 
 /**
  * What the agent *has*, as opposed to what it did.
@@ -21,126 +18,124 @@ import { createWritingTools } from '$lib/agent/writing-tools';
  * description nobody has re-read since it was written is rent. Answering that
  * needs the schemas laid out side by side, which is what this is.
  *
- * ── Why the tools are built here rather than described ──────────────────────
- * The alternative — a hand-kept list of tool names and sizes — would be wrong
- * within a week and would be wrong *silently*, which is the failure mode the
- * whole X-ray exists to refuse. So the real factories are called and the real
- * schemas serialised. If a tool is added, renamed or its description grows, the
- * panel changes without anyone touching it.
+ * ── Asked of the agent, not assembled from its parts ────────────────────────
+ * This used to call the tool factories directly and add up what they returned,
+ * and it was wrong in two directions at once. It imported `createWritingTools`
+ * and never called it, so `present_outline` and `stylize_figure` — long
+ * descriptions, sent every call — were missing entirely. And it could not see
+ * the tools Mastra *mints*: `agent-paperReader` for the subagent, and `skill` /
+ * `skill_read` / `skill_search` once the agent has skills. The panel declared
+ * the first of those uncountable and was silent about the rest.
  *
- * Building them is cheap and safe: `createResearchTools` mints a source
- * registry and closures, and nothing in either factory touches the network or
- * the provider until a tool is actually executed. The registry made here is
- * thrown away with the request.
+ * It builds the real agent and asks `getToolsForExecution()` now, which returns
+ * the tools already converted to the shape that goes on the wire — `{ type,
+ * description, parameters, strict }`. So the number below is no longer a
+ * reconstruction that has to be kept in step with the sender; it is the sender's
+ * own object, measured. Add a tool, a skill or a subagent and this changes with
+ * no edit here.
+ *
+ * Building the agent is cheap and safe: factories and closures, nothing touching
+ * the network or the provider until a tool actually executes. The source
+ * registry it mints is thrown away with the request.
  *
  * No auth check: `hooks.server.ts` gates every route but the login page.
  */
 
 /**
- * How the provider is told about a tool, reconstructed.
+ * What one tool costs on every request.
  *
- * The AI SDK sends the OpenAI Responses shape — `{ type, name, description,
- * parameters, strict }` — and `context.ts` bills exactly that object when it
- * decomposes the captured request. Counting the same shape here is what makes
- * the two panels agree; counting the schema alone would understate every row by
- * however long its description is, which for these tools is most of the weight.
+ * `getToolsForExecution()` hands back the converted tool, so the fields below
+ * are the provider's own — `parameters` is the JSON Schema that will be sent,
+ * not a second conversion of the zod type that might disagree with it. The
+ * entry is rebuilt rather than stringified whole because the live object also
+ * carries `execute`, hooks and internals that never leave the process.
  *
- * This is still a *reconstruction*. The measured number is the one in the
- * context panel, and where they disagree the context panel is right.
+ * `context.ts` bills exactly this shape when it decomposes a captured request,
+ * which is what lets this panel and the context panel agree. Where they still
+ * disagree, the context panel is right: it reads the bytes.
  */
-function wireEntry(id: string, description: string, parameters: unknown) {
-	return { type: 'function', name: id, description, parameters, strict: false };
-}
-
-/**
- * A tool's input schema as JSON Schema, via Mastra's own converter.
- *
- * Mastra's, not `z.toJSONSchema`, because Mastra is what performs this
- * conversion on the way to the provider — using a second converter would
- * produce a number that is defensible and not the one being charged for.
- *
- * A tool with no input schema is legal and yields no parameters rather than an
- * empty object, so its row reports what it is: description and nothing else.
- */
-function schemaOf(schema: unknown): unknown {
-	if (!schema) return undefined;
-	try {
-		return standardSchemaToJSONSchema(schema as Parameters<typeof standardSchemaToJSONSchema>[0]);
-	} catch {
-		// A schema that will not serialise is a fact worth surviving rather than a
-		// 500: the other four rows are still true and still worth showing.
-		return undefined;
-	}
-}
-
-interface Described {
-	id: string;
+interface Sent {
+	type?: string;
 	description?: string;
-	inputSchema?: unknown;
+	parameters?: unknown;
+	strict?: boolean;
 	requireApproval?: unknown;
+	needsApprovalFn?: unknown;
 }
 
-function describe(tool: unknown) {
-	const t = tool as Described;
-	const description = t.description ?? '';
-	const parameters = schemaOf(t.inputSchema);
-	const schemaChars = parameters === undefined ? 0 : JSON.stringify(parameters).length;
+function describe(id: string, tool: Sent) {
+	const description = tool.description ?? '';
+	const parameters = tool.parameters;
+	const wire = {
+		type: tool.type ?? 'function',
+		name: id,
+		description,
+		parameters,
+		strict: Boolean(tool.strict)
+	};
 
 	return {
-		id: t.id,
+		id,
 		description,
 		descriptionChars: description.length,
-		schemaChars,
+		schemaChars: parameters === undefined ? 0 : JSON.stringify(parameters).length,
 		/** Name, description and schema together — the whole per-call charge. */
-		chars: JSON.stringify(wireEntry(t.id, description, parameters)).length,
+		chars: JSON.stringify(wire).length,
 		/**
 		 * Whether this one pauses for a human before it runs.
 		 *
-		 * `requireApproval` may be a per-call predicate rather than a flag, so
-		 * this reads "can pause", not "will pause every time" — which is the
-		 * honest claim and the one the panel makes.
+		 * Either a flag or a per-call predicate, so this reads "can pause", not
+		 * "will pause every time" — which is the honest claim and the one the
+		 * panel makes.
 		 */
-		approval: Boolean(t.requireApproval)
+		approval: Boolean(tool.requireApproval) || Boolean(tool.needsApprovalFn)
 	};
 }
 
 export const GET: RequestHandler = async () => {
-	/*
-	 * All three factories, which is the whole point and was for a while only two.
-	 *
-	 * `createWritingTools` was imported here and never called, so `present_outline`
-	 * and `stylize_figure` — both on every single provider call, both carrying
-	 * long descriptions — were missing from the inventory and from the "whole
-	 * fixed tax" total beneath it. A panel whose stated job is to reconstruct the
-	 * per-call charge, quietly reconstructing four fifths of it, is the exact
-	 * failure this app exists to refuse. It surfaced as an unused-import lint
-	 * error, which is a reminder that a red lint is a broken instrument.
-	 *
-	 * `createWritingTools` takes an approved outline in a real run; none is
-	 * passed here because the schemas do not depend on it. The tool a run builds
-	 * with an outline and the tool this describes are the same shape on the wire.
-	 */
-	const { tools: research } = createResearchTools();
-	const { tools: images } = createImageTools();
-	const { tools: writing } = createWritingTools();
+	const { agent } = (await createColophon()) as unknown as {
+		agent: {
+			getToolsForExecution(c: object): Promise<Record<string, Sent>>;
+			listAgents(): Promise<Record<string, unknown>>;
+			listSkills(): Promise<unknown[]>;
+		};
+	};
 
-	const tools = [
-		...Object.values(research),
-		...Object.values(images),
-		...Object.values(writing)
-	].map(describe);
+	/*
+	 * `getToolsForExecution` is Mastra's own send-time assembly. `listTools()`
+	 * would return only what was *assigned* — the eight built-ins — and miss the
+	 * four the framework adds, which are as real a charge as any of ours.
+	 */
+	const sent = await agent.getToolsForExecution({});
+
+	const tools = Object.entries(sent)
+		.map(([id, tool]) => describe(id, tool))
+		.sort((a, b) => b.chars - a.chars);
+
+	/*
+	 * Counts for the opening screen, from the same object the table came from.
+	 *
+	 * They were three literals in `Preamble.svelte` with a comment promising
+	 * "a wrong number on the opening screen is worse than no number at all" —
+	 * and by the time anyone looked, it said five tools when there were twelve
+	 * and two skills when the agent had none attached at all. Derived here, the
+	 * promise is kept by construction rather than by remembering to grep.
+	 *
+	 * `tools` counts what the model is shown, minus the delegation, because that
+	 * is counted on its own line as a subagent and counting it twice is exactly
+	 * the sort of small dishonesty this endpoint exists to remove.
+	 */
+	const subagents = Object.keys(await agent.listAgents()).length;
+	const skills = (await agent.listSkills()).length;
 
 	return json({
 		tools,
 		/** The whole fixed tax, in characters, paid once per provider call. */
 		chars: tools.reduce((sum, t) => sum + t.chars, 0),
-		/**
-		 * The paper-reader subagent is exposed to the model as a tool too, under
-		 * `agent-paperReader`, and it is deliberately absent: Mastra mints that
-		 * tool's schema at run time from the agent's own description, so it does
-		 * not exist to be measured until a run is under way. Saying so in the
-		 * payload keeps the omission from reading as an oversight in the panel.
-		 */
-		delegationCounted: false
+		counts: {
+			tools: tools.filter((t) => !t.id.startsWith('agent-')).length,
+			subagents,
+			skills
+		}
 	});
 };
