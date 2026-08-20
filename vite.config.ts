@@ -142,6 +142,21 @@ export default defineConfig({
 			}
 		})
 	],
+	/**
+	 * Bundle the Svelte packages rather than externalising them for SSR.
+	 *
+	 * `@hugeicons/svelte` and `paneforge` ship raw `.svelte` source in their
+	 * `svelte` export condition — which is correct of them — but an externalised
+	 * dependency is loaded by Node directly, and Node has no idea what a
+	 * `.svelte` file is. The failure is `ERR_UNKNOWN_FILE_EXTENSION` at request
+	 * time, on the *server* only: `svelte-check` passes, the client build is
+	 * fine, and the page returns a bare 500 with nothing wrong in any source
+	 * file. Listing them here routes them through Vite's Svelte plugin instead.
+	 */
+	ssr: {
+		noExternal: ['@hugeicons/svelte', 'paneforge', 'bits-ui']
+	},
+
 	test: {
 		expect: { requireAssertions: true },
 		projects: [

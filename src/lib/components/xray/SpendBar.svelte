@@ -52,7 +52,6 @@
 
 <section class="panel">
 	<header>
-		<span class="co-eyebrow">spend</span>
 		<span class="co-num total">{u.total ? u.total.toLocaleString() : '—'}</span>
 	</header>
 
@@ -88,15 +87,6 @@
 		flex-direction: column;
 		gap: 0.5rem;
 		flex: none;
-	}
-
-	header {
-		display: flex;
-		align-items: baseline;
-		gap: 0.6rem;
-	}
-	header .co-eyebrow {
-		color: color-mix(in oklab, var(--co-tok-new) 75%, var(--muted-foreground));
 	}
 	.total {
 		margin-left: auto;

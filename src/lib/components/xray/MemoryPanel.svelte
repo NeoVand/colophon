@@ -97,7 +97,6 @@
 
 <section class="panel">
 	<header>
-		<span class="co-eyebrow">memory</span>
 		<span class="co-eyebrow scope">resource</span>
 		{#if filled}
 			<button class="co-eyebrow toggle" onclick={() => (open = !open)}

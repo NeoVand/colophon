@@ -2,69 +2,149 @@
 	import { onMount } from 'svelte';
 	import { session } from '$lib/agent/session.svelte';
 	import { theme } from '$lib/theme.svelte';
+	import { layout } from '$lib/layout.svelte';
+	import * as threads from '$lib/threads';
+
 	import Header from '$lib/components/Header.svelte';
+	import Split from '$lib/components/Split.svelte';
+	import Stack, { type PanelSpec } from '$lib/components/Stack.svelte';
 	import Conversation from '$lib/components/chat/Conversation.svelte';
 	import Composer from '$lib/components/chat/Composer.svelte';
-	import EventTimeline from '$lib/components/xray/EventTimeline.svelte';
-	import LibraryPanel from '$lib/components/xray/LibraryPanel.svelte';
+	import ActivityStrip from '$lib/components/chat/ActivityStrip.svelte';
+	import ThreadList from '$lib/components/chat/ThreadList.svelte';
+	import SettingsSheet from '$lib/components/SettingsSheet.svelte';
+	import AboutSheet from '$lib/components/AboutSheet.svelte';
+	import Cockpit from '$lib/components/cockpit/Cockpit.svelte';
+
 	import SpendBar from '$lib/components/xray/SpendBar.svelte';
-	import ContextPanel from '$lib/components/xray/ContextPanel.svelte';
 	import MemoryPanel from '$lib/components/xray/MemoryPanel.svelte';
+	import ContextPanel from '$lib/components/xray/ContextPanel.svelte';
+	import LibraryPanel from '$lib/components/xray/LibraryPanel.svelte';
+	import EventTimeline from '$lib/components/xray/EventTimeline.svelte';
+	import GraphPanel from '$lib/components/xray/GraphPanel.svelte';
+	import McpPanel from '$lib/components/xray/McpPanel.svelte';
+	import SkillsPanel from '$lib/components/xray/SkillsPanel.svelte';
 
 	/**
-	 * Two columns: the work, and the dissection.
+	 * The working surface: a conversation, and the dissection beside it.
 	 *
-	 * The conversation is the product and gets the room. The X-ray is a flank
-	 * that can be shut — it is for teaching and for debugging, and someone who
-	 * only wants a research companion should not have to look at instrumentation
-	 * to use one.
+	 * The flank is a `Split` rather than a fixed column and a `Stack` rather
+	 * than a fixed order — the divider drags, the instruments reorder, fold and
+	 * hide. That is not decoration: eight panels do not fit a screen at once,
+	 * and which of them matter depends entirely on what you are doing. Reading
+	 * a paper, the library and events; tuning a prompt, the context window.
 	 *
-	 * `onMount` rather than `$effect` for the two startup calls. Both read
-	 * `localStorage` and write tracked state; inside an effect that is a write
-	 * to something the effect itself depends on, and Svelte 5 answers with
-	 * `effect_update_depth_exceeded` — a lesson this codebase has already paid
-	 * for once.
+	 * `onMount` for every startup call. All of them read `localStorage` and
+	 * write tracked state, which inside an `$effect` is a write to something the
+	 * effect depends on — `effect_update_depth_exceeded`, shipped twice here.
 	 */
-	let xray = $state(false);
+	let settingsOpen = $state(false);
+	let aboutOpen = $state(false);
+	let threadsOpen = $state(false);
+	let model = $state('gpt-5');
 
 	onMount(() => {
 		theme.start();
+		layout.start();
 		session.restore();
-		xray = localStorage.getItem('colophon:xray') === '1';
+		threads.touch(session.thread);
 	});
 
-	function toggleXray() {
-		xray = !xray;
-		localStorage.setItem('colophon:xray', xray ? '1' : '0');
+	/**
+	 * The instruments, in the order they are first offered.
+	 *
+	 * `grow` is each panel's share of the leftover height. Spend, memory, skills
+	 * and MCP are a fixed handful of rows and take none — giving them an equal
+	 * eighth starves the four that are lists. Events earns the most: it is the
+	 * one that is useless with three rows showing.
+	 */
+	const PANELS: PanelSpec[] = [
+		{ id: 'spend', label: 'spend', tone: 'tok-new', component: SpendBar, grow: 0 },
+		{ id: 'memory', label: 'memory', tone: 'memory', component: MemoryPanel, grow: 0 },
+		{ id: 'graph', label: 'graph', tone: 'subagent', component: GraphPanel, grow: 0.9 },
+		{ id: 'context', label: 'context', tone: 'memory', component: ContextPanel, grow: 0.8 },
+		{ id: 'library', label: 'library', tone: 'library', component: LibraryPanel, grow: 1.1 },
+		{ id: 'events', label: 'events', tone: 'tool', component: EventTimeline, grow: 1.4 },
+		{ id: 'skills', label: 'skills', tone: 'accent', component: SkillsPanel, grow: 0 },
+		{ id: 'mcp', label: 'mcp', tone: 'tool', component: McpPanel, grow: 0 }
+	];
+
+	const panelVisibility = $derived(
+		Object.fromEntries(PANELS.map((p) => [p.id, layout.isVisible(p.id)]))
+	);
+
+	function openThread(id: string) {
+		session.open(id);
+		threads.touch(id);
+		threadsOpen = false;
+	}
+
+	function newThread() {
+		session.newThread();
+		threads.touch(session.thread);
 	}
 </script>
 
 <svelte:head><title>Colophon</title></svelte:head>
 
 <div class="app">
-	<Header {xray} onxray={toggleXray} />
+	<Header
+		flank={layout.showFlank}
+		onflank={() => layout.toggleFlank()}
+		mode={layout.mode}
+		onmode={(m) => layout.setMode(m)}
+		onsettings={() => (settingsOpen = true)}
+		onabout={() => (aboutOpen = true)}
+		onthreads={() => (threadsOpen = true)}
+		onnew={newThread}
+	/>
 
-	<main class:split={xray}>
-		<section class="work">
-			<Conversation />
-			<Composer />
-		</section>
-
-		{#if xray}
-			<aside class="flank">
-				<SpendBar />
-				<div class="hr"></div>
-				<MemoryPanel />
-				<div class="hr"></div>
-				<div class="slot context"><ContextPanel /></div>
-				<div class="hr"></div>
-				<div class="slot"><LibraryPanel /></div>
-				<div class="hr"></div>
-				<div class="slot events"><EventTimeline /></div>
-			</aside>
+	<main>
+		{#if layout.showFlank}
+			<Split defaultSize={layout.flank} onresize={(p) => layout.setFlank(p)}>
+				{#snippet left()}
+					{@render work()}
+				{/snippet}
+				{#snippet right()}
+					<aside class="flank">
+						{#if layout.mode === 'cockpit'}
+							<Cockpit />
+						{:else}
+							<Stack panels={PANELS} />
+						{/if}
+					</aside>
+				{/snippet}
+			</Split>
+		{:else}
+			{@render work()}
 		{/if}
 	</main>
 </div>
+
+{#snippet work()}
+	<section class="work">
+		<Conversation />
+		<ActivityStrip />
+		<Composer />
+	</section>
+{/snippet}
+
+<ThreadList bind:open={threadsOpen} current={session.thread} onopen={openThread} />
+
+<SettingsSheet
+	bind:open={settingsOpen}
+	{model}
+	onmodel={(m) => (model = m)}
+	panels={panelVisibility}
+	onpanel={(id) => layout.toggleVisible(id)}
+	onclear={() => {
+		threads.clear();
+		layout.reset();
+		session.newThread();
+	}}
+/>
+
+<AboutSheet bind:open={aboutOpen} />
 
 <style>
 	.app {
@@ -84,6 +164,7 @@
 	.work {
 		flex: 1;
 		min-width: 0;
+		height: 100%;
 		display: flex;
 		flex-direction: column;
 	}
@@ -91,75 +172,17 @@
 	/*
 		A flank, not a sidebar.
 
-		Separated by a single hairline and nothing else — no card, no shadow, no
-		second background. The instruments inside are already obviously distinct
-		objects; drawing a box around each one is how a panel of readouts turns
-		into a form. Space and the eyebrow labels do the work.
+		Separated by the splitter's hairline and nothing else — no card, no
+		shadow, no second background. The instruments inside are already
+		obviously distinct objects; a box around each is how a panel of readouts
+		becomes a form.
 	*/
 	.flank {
-		flex: none;
-		width: 22rem;
+		height: 100%;
 		display: flex;
 		flex-direction: column;
-		gap: 0.85rem;
-		padding: 0.85rem 0.6rem 0.85rem 1rem;
-		border-left: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+		padding: 0.7rem 0.5rem 0.7rem 0.85rem;
 		min-height: 0;
-	}
-
-	.hr {
-		flex: none;
-		height: 1px;
-		background: color-mix(in oklab, var(--border) 45%, transparent);
-	}
-
-	/*
-		The two scrolling instruments share what the spend bar leaves.
-
-		Without this each one is sized by its content, so a search returning
-		twelve papers pushes the event timeline off the bottom of the screen —
-		which it did. `flex-basis: 0` rather than `auto` is the load-bearing part:
-		with `auto` the basis is still the content height and a long list wins the
-		negotiation before it starts.
-
-		Sizing lives here rather than in the panels because it is a fact about
-		this column, not about a library. The `:global` reaches the component's
-		own root, which is the element that has to do the growing.
-	*/
-	.slot {
-		flex: 1 1 0;
-		min-height: 0;
-		display: flex;
-		flex-direction: column;
-		/* `min-height: 0` lets a slot shrink to nothing when a sibling grows, and
-		   a shrunk slot whose child does not scroll spills its text over whatever
-		   is below. Clipping here means the worst case is content cut off rather
-		   than two panels printed on top of each other. */
 		overflow: hidden;
-	}
-	.slot > :global(*) {
-		flex: 1;
-		min-height: 0;
-	}
-
-	/* Event rows are a third the height of a library row, so an even split
-	   shows about three of them. Weighted to what each one needs to be useful. */
-	.slot.events {
-		flex-grow: 1.35;
-	}
-
-	/* The context rows are few and fixed in number — one per tool schema plus a
-	   handful — so it needs less than an equal third and giving it one starves
-	   the two that grow. */
-	.slot.context {
-		flex-grow: 0.75;
-	}
-
-	/* Under a certain width two columns is one cramped column and one useless
-	   one, so the flank goes rather than shrinking past legibility. */
-	@media (max-width: 960px) {
-		.flank {
-			display: none;
-		}
 	}
 </style>

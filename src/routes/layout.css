@@ -109,6 +109,17 @@
 	--co-tok-out: oklch(0.5 0.085 70);
 	--co-tok-reason: oklch(0.71 0.045 70);
 	--co-tok-image: oklch(0.52 0.09 330);
+
+	/* File kinds — a third family, and deliberately NOT the --co-* legend.
+	   The legend is a claim: ochre means retrieval happened. Reusing it for a
+	   PDF would assert something untrue. These are free to use the conventional
+	   associations a reader already has. */
+	--co-file-doc: oklch(0.5 0.05 250);
+	--co-file-pdf: oklch(0.53 0.13 27);
+	--co-file-image: oklch(0.53 0.075 300);
+	--co-file-data: oklch(0.5 0.07 150);
+	--co-file-code: oklch(0.52 0.07 80);
+	--co-file-plain: oklch(0.52 0.012 260);
 }
 
 /* ── Dark ────────────────────────────────────────────────────────────────
@@ -158,6 +169,13 @@
 	--co-tok-out: oklch(0.82 0.08 75);
 	--co-tok-reason: oklch(0.63 0.045 75);
 	--co-tok-image: oklch(0.75 0.09 330);
+
+	--co-file-doc: oklch(0.72 0.055 250);
+	--co-file-pdf: oklch(0.71 0.13 27);
+	--co-file-image: oklch(0.72 0.08 300);
+	--co-file-data: oklch(0.72 0.08 150);
+	--co-file-code: oklch(0.74 0.08 80);
+	--co-file-plain: oklch(0.68 0.012 260);
 }
 
 /* ── Themes ──────────────────────────────────────────────────────────────

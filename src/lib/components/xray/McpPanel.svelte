@@ -1,0 +1,371 @@
+<script lang="ts">
+	import { onMount } from 'svelte';
+	import { HugeiconsIcon } from '@hugeicons/svelte';
+	import { ICON } from '$lib/icons';
+
+	/**
+	 * Tools that do not live in this repository.
+	 *
+	 * Every other tool the agent has was written here — `search_papers`,
+	 * `fetch_paper`, `cite`, `bibliography` — and you can read them. The Model
+	 * Context Protocol is the other kind: a server somewhere else says what it
+	 * can do, and the agent picks those capabilities up at runtime. Nothing in
+	 * this codebase knows their names until it asks.
+	 *
+	 * That difference is the whole point of the panel, so it is the thing the
+	 * design carries. **A dashed edge means the thing came from outside.** Solid
+	 * rules elsewhere in the X-ray mean "written here"; the dashes are not a
+	 * texture, they are the claim. The ochre is the legend's tool colour, used
+	 * for tools, unchanged — an MCP tool is still a tool.
+	 *
+	 * The second half of that claim lives in the id. Every outside tool is
+	 * exposed as `mcp_<server>__<tool>`, so when one runs, the chip in the
+	 * conversation and the row in the event timeline both say where it came
+	 * from without this panel being open at all.
+	 *
+	 * Fetched on mount and on request rather than tied to the run: which servers
+	 * exist is a property of the deployment, not of a conversation. A connection
+	 * can still drop, which is why `recheck` exists.
+	 */
+
+	/**
+	 * The wire shape, declared here rather than imported.
+	 *
+	 * `$lib/server/mcp` is server-only — SvelteKit refuses to let it into a
+	 * component's module graph, and a type-only import is not worth arguing with
+	 * the illegal-import check about. If the endpoint changes, this changes.
+	 */
+	interface WireTool {
+		name: string;
+		id: string;
+		description?: string;
+	}
+	interface WireServer {
+		name: string;
+		url: string;
+		transport: 'http' | 'sse';
+		software?: string;
+		tools: WireTool[];
+		error?: string;
+	}
+
+	const EXAMPLE = '[{"name":"docs","url":"https://example.com/mcp","transport":"http"}]';
+
+	/** Must match MCP_TOOL_PREFIX in `$lib/server/mcp`, which mints these ids. */
+	const PREFIX = 'mcp_';
+
+	let servers = $state<WireServer[]>([]);
+	let configured = $state(false);
+	let configError = $state<string | null>(null);
+	let fetchError = $state('');
+	let loaded = $state(false);
+	let loading = $state(false);
+
+	async function load() {
+		loading = true;
+		try {
+			const response = await fetch('/api/mcp');
+			const data = (await response.json()) as {
+				configured: boolean;
+				error: string | null;
+				servers: WireServer[];
+			};
+			configured = data.configured;
+			configError = data.error;
+			servers = data.servers ?? [];
+			fetchError = '';
+		} catch (cause) {
+			fetchError = cause instanceof Error ? cause.message : String(cause);
+		} finally {
+			loading = false;
+			loaded = true;
+		}
+	}
+
+	// `onMount`, not `$effect`: this writes state it would otherwise depend on,
+	// which is the shape that produced `effect_update_depth_exceeded` here once.
+	onMount(load);
+
+	const live = $derived(servers.filter((s) => !s.error));
+	const toolCount = $derived(live.reduce((n, s) => n + s.tools.length, 0));
+
+	/** The host alone. A full URL in a 0.625rem column is noise with a scrollbar. */
+	function host(url: string): string {
+		try {
+			return new URL(url).host;
+		} catch {
+			return url;
+		}
+	}
+</script>
+
+<section class="panel">
+	<header>
+		<HugeiconsIcon icon={ICON.mcp} size={11} />
+		<span class="spacer"></span>
+		{#if loaded && configured}
+			<span class="co-num tally">
+				{live.length}/{servers.length} connected · {toolCount} tool{toolCount === 1 ? '' : 's'}
+			</span>
+		{/if}
+		{#if loaded}
+			<button class="co-eyebrow recheck" onclick={load} disabled={loading}>
+				{loading ? '…' : 'recheck'}
+			</button>
+		{/if}
+	</header>
+
+	{#if !loaded}
+		<p class="quiet">…</p>
+	{:else if fetchError}
+		<p class="err">{fetchError}</p>
+	{:else if !configured}
+		<!--
+			The empty state does the teaching, because for most readers this panel
+			will never have anything in it — and "no MCP servers" is worth
+			understanding, whereas an empty box is not.
+		-->
+		<p class="quiet">
+			The Model Context Protocol is how an agent picks up tools it did not ship with. You point it
+			at a server, it asks what that server can do, and those tools join the ones built in — no
+			deploy, no code here that knows their names.
+		</p>
+		{#if configError}
+			<p class="err">{configError}</p>
+			<p class="quiet">Until that parses, Colophon runs on its own four tools.</p>
+		{:else}
+			<p class="quiet">
+				None is configured. Set <code>MCP_SERVERS</code> to a JSON array and every tool each server offers
+				appears here.
+			</p>
+			<pre class="example">{EXAMPLE}</pre>
+		{/if}
+	{:else}
+		{#if configError}
+			<p class="err">{configError}</p>
+		{/if}
+
+		<ul class="servers">
+			{#each servers as server (server.name)}
+				<li class="server" class:down={Boolean(server.error)}>
+					<div class="ident">
+						<span class="name">{server.name}</span>
+						<span class="co-eyebrow transport">{server.transport}</span>
+						<span class="co-num where">{host(server.url)}</span>
+					</div>
+
+					{#if server.error}
+						<p class="err">{server.error}</p>
+					{:else}
+						<p class="co-num software">
+							{server.software ?? 'connected'} · {server.tools.length} tool{server.tools.length ===
+							1
+								? ''
+								: 's'}
+						</p>
+
+						{#if server.tools.length}
+							<ul class="tools">
+								{#each server.tools as tool (tool.id)}
+									<li class="tool">
+										<p class="id co-num">
+											<span class="prefix">{PREFIX}</span>{tool.id.startsWith(PREFIX)
+												? tool.id.slice(PREFIX.length)
+												: tool.id}
+										</p>
+										{#if tool.description}
+											<p class="what">{tool.description}</p>
+										{/if}
+									</li>
+								{/each}
+							</ul>
+						{:else}
+							<p class="quiet">Connected, and offering nothing.</p>
+						{/if}
+					{/if}
+				</li>
+			{/each}
+		</ul>
+
+		{#if toolCount}
+			<p class="quiet foot">
+				Each keeps its <code>{PREFIX}</code> prefix everywhere it appears, so a chip in the conversation
+				says which tools came from outside.
+			</p>
+		{/if}
+	{/if}
+</section>
+
+<style>
+	.panel {
+		display: flex;
+		flex-direction: column;
+		gap: 0.45rem;
+		min-height: 0;
+	}
+
+	header {
+		display: flex;
+		align-items: center;
+		gap: 0.4rem;
+		flex: none;
+		color: color-mix(in oklab, var(--co-tool) 70%, var(--muted-foreground));
+	}
+	header .co-eyebrow {
+		color: inherit;
+	}
+
+	/* Takes the slack, so the readouts sit right without either of them
+	   needing an auto margin — two flex items both claiming one would split
+	   the free space between them rather than both going to the edge. */
+	.spacer {
+		flex: 1;
+	}
+
+	.tally {
+		font-size: 0.625rem;
+		color: var(--muted-foreground);
+	}
+
+	.recheck {
+		border: 0;
+		background: transparent;
+		padding: 0;
+		cursor: pointer;
+		color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+	}
+	.recheck:hover:not(:disabled) {
+		color: var(--co-accent);
+	}
+	.recheck:disabled {
+		cursor: default;
+	}
+
+	.quiet {
+		margin: 0;
+		font-size: 0.75rem;
+		line-height: 1.5;
+		color: color-mix(in oklab, var(--muted-foreground) 80%, transparent);
+		text-wrap: pretty;
+	}
+	.foot {
+		font-size: 0.6875rem;
+	}
+
+	.err {
+		margin: 0;
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		line-height: 1.5;
+		color: var(--co-error);
+		text-wrap: pretty;
+	}
+
+	code {
+		font-family: var(--font-mono);
+		font-size: 0.6875rem;
+		color: color-mix(in oklab, var(--foreground) 70%, transparent);
+	}
+
+	.example {
+		margin: 0;
+		overflow-x: auto;
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		line-height: 1.6;
+		color: color-mix(in oklab, var(--muted-foreground) 85%, transparent);
+	}
+
+	.servers,
+	.tools {
+		margin: 0;
+		padding: 0;
+		list-style: none;
+	}
+
+	.servers {
+		overflow-y: auto;
+		min-height: 0;
+	}
+
+	.server {
+		padding: 0.4rem 0;
+		border-bottom: 1px solid color-mix(in oklab, var(--border) 45%, transparent);
+	}
+	.server:last-child {
+		border-bottom: 0;
+	}
+
+	.ident {
+		display: flex;
+		align-items: baseline;
+		gap: 0.4rem;
+	}
+
+	.name {
+		font-size: 0.78rem;
+		color: var(--foreground);
+	}
+	.server.down .name {
+		color: color-mix(in oklab, var(--foreground) 60%, transparent);
+	}
+
+	/* Which protocol revision this server speaks is a real fact about it: `sse`
+	   is the deprecated transport, and knowing that is the difference between
+	   "old server" and "broken server" when one starts misbehaving. */
+	.transport {
+		font-size: 0.5rem;
+		padding: 0 0.25rem;
+		border: 1px solid color-mix(in oklab, var(--co-tool) 30%, transparent);
+		border-radius: 2px;
+		color: color-mix(in oklab, var(--co-tool) 65%, var(--muted-foreground));
+	}
+
+	.where {
+		margin-left: auto;
+		font-size: 0.625rem;
+		color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+	}
+
+	.software {
+		margin: 0.15rem 0 0;
+		font-size: 0.625rem;
+		color: color-mix(in oklab, var(--muted-foreground) 80%, transparent);
+	}
+
+	.tools {
+		margin-top: 0.35rem;
+		/*
+			The dashed edge is the panel's one argument, made in CSS: everything
+			else in the X-ray is ruled with a solid hairline, and solid means
+			"written in this repository". These tools were not. The gap in the line
+			is the gap in the codebase.
+		*/
+		border-left: 1px dashed color-mix(in oklab, var(--co-tool) 45%, transparent);
+		padding-left: 0.5rem;
+	}
+
+	.tool {
+		padding: 0.2rem 0;
+	}
+
+	.id {
+		margin: 0;
+		font-size: 0.625rem;
+		line-height: 1.4;
+		color: var(--co-tool);
+		overflow-wrap: anywhere;
+	}
+	/* The namespace recedes; the tool's own name is what you read. */
+	.prefix {
+		color: color-mix(in oklab, var(--co-tool) 45%, transparent);
+	}
+
+	.what {
+		margin: 0.05rem 0 0;
+		font-size: 0.6875rem;
+		line-height: 1.4;
+		color: color-mix(in oklab, var(--muted-foreground) 80%, transparent);
+		text-wrap: pretty;
+	}
+</style>

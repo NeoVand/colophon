@@ -61,7 +61,6 @@
 
 <section class="panel">
 	<header>
-		<span class="co-eyebrow">context</span>
 		{#if ctx}
 			<span class="co-num meta">call {ctx.call} · {kb(ctx.bytes)}B</span>
 		{/if}
@@ -119,16 +118,6 @@
 		flex-direction: column;
 		gap: 0.5rem;
 		min-height: 0;
-	}
-
-	header {
-		display: flex;
-		align-items: baseline;
-		gap: 0.6rem;
-		flex: none;
-	}
-	header .co-eyebrow {
-		color: color-mix(in oklab, var(--co-memory) 70%, var(--muted-foreground));
 	}
 	.meta {
 		margin-left: auto;

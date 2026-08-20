@@ -127,6 +127,32 @@ class Session {
 		if (!existing) localStorage.setItem('colophon:thread', this.thread);
 	}
 
+	/**
+	 * Switch to a conversation that already exists.
+	 *
+	 * The turns are deliberately **not** replayed into the view. Mastra holds
+	 * the thread's messages server-side and the agent will have them on the next
+	 * send, so the conversation continues correctly — but re-rendering the
+	 * history here would mean re-deriving the library, the events and the spend
+	 * from turns that were streamed hours ago and are no longer in this store.
+	 * Showing a stale X-ray beside a live conversation is worse than showing an
+	 * empty one, so the panels reset and say nothing rather than something wrong.
+	 *
+	 * That is a real limitation and it is written down rather than hidden: a
+	 * transcript view is a separate feature, and it belongs in the vault.
+	 */
+	open(id: string): void {
+		if (!id || id === this.thread) return;
+		this.thread = id;
+		localStorage.setItem('colophon:thread', id);
+		this.turns = [];
+		this.events = [];
+		this.papers = [];
+		this.context = undefined;
+		this.contextTokens = 0;
+		this.#seq = 0;
+	}
+
 	newThread(): void {
 		this.thread = crypto.randomUUID();
 		localStorage.setItem('colophon:thread', this.thread);

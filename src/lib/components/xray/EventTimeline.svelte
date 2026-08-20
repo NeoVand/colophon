@@ -200,7 +200,6 @@
 
 <section class="panel">
 	<header>
-		<span class="co-eyebrow">events</span>
 		<div class="filters">
 			{#each ['tools', 'quiet', 'all'] as f (f)}
 				<button
@@ -235,16 +234,6 @@
 		flex-direction: column;
 		min-height: 0;
 		gap: 0.5rem;
-	}
-
-	header {
-		display: flex;
-		align-items: baseline;
-		gap: 0.6rem;
-		flex: none;
-	}
-	header > .co-eyebrow {
-		color: color-mix(in oklab, var(--co-tool) 70%, var(--muted-foreground));
 	}
 
 	.filters {

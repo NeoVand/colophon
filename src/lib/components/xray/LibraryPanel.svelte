@@ -52,7 +52,6 @@
 
 <section class="panel">
 	<header>
-		<span class="co-eyebrow">library</span>
 		{#if papers.length}
 			<span class="co-num tally">
 				<span class="k listed">{papers.length}</span> seen ·
@@ -110,16 +109,6 @@
 		flex-direction: column;
 		min-height: 0;
 		gap: 0.5rem;
-	}
-
-	header {
-		display: flex;
-		align-items: baseline;
-		gap: 0.6rem;
-		flex: none;
-	}
-	header .co-eyebrow {
-		color: color-mix(in oklab, var(--co-library) 70%, var(--muted-foreground));
 	}
 
 	.tally {
