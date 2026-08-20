@@ -52,7 +52,11 @@ curl -c jar -X POST "$ORIGIN/login" -H "Origin: $ORIGIN" -d "password=$PASSWORD"
 
 ## In flight
 
-Wiring the **approval flow** through the endpoint and UI. The agent is now
+**Approval is done** — verified with a real round trip: the run paused, the
+approval arrived in a separate request, the image rendered (788 KB) and served
+at `/figures/…`. Next is Resend delivery, then the X-ray panels.
+
+Historical note on why it works. The agent is now
 registered on a `Mastra` instance with storage so a suspended run survives into
 a _different_ HTTP request — without that, `approveToolCall()` fails with
 "snapshot not found".

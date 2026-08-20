@@ -41,6 +41,36 @@ function parseFrame(frame: string): { name: string; data: string } | null {
 	return data.length ? { name, data: data.join('\n') } : null;
 }
 
+/**
+ * Resume a run that paused for approval.
+ *
+ * Deliberately the same reader as `run`: the continuation is a stream of the
+ * same events, so the caller's handling does not change — only where the
+ * bytes came from.
+ */
+export async function respond({
+	runId,
+	toolCallId,
+	approve,
+	reason,
+	onEvent,
+	onError
+}: {
+	runId: string;
+	toolCallId: string;
+	approve: boolean;
+	reason?: string;
+} & RunHandlers): Promise<void> {
+	await consume(
+		fetch('/api/agent/approve', {
+			method: 'POST',
+			headers: { 'content-type': 'application/json' },
+			body: JSON.stringify({ runId, toolCallId, approve, reason })
+		}),
+		{ onEvent, onError }
+	);
+}
+
 export async function run({
 	prompt,
 	thread,
@@ -57,6 +87,16 @@ export async function run({
 		body: JSON.stringify({ prompt, thread }),
 		signal
 	});
+
+	await consume(Promise.resolve(response), { onEvent, onReady, onError, startedAt });
+}
+
+/** Read an SSE body to completion, dispatching each frame. */
+async function consume(
+	pending: Promise<Response>,
+	{ onEvent, onReady, onError, startedAt = performance.now() }: RunHandlers & { startedAt?: number }
+): Promise<void> {
+	const response = await pending;
 
 	if (!response.ok || !response.body) {
 		onError?.(`The server refused the run (HTTP ${response.status}).`);

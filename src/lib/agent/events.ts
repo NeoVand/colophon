@@ -51,6 +51,15 @@ export type ColophonEvent =
 	  }
 	/** One step of the agent loop closed. */
 	| { k: 'step'; usage: Usage }
+	/**
+	 * The run has paused, waiting for a human to approve a tool call.
+	 *
+	 * Carries the arguments verbatim, because what is being approved is the
+	 * literal call the model wrote — showing a paraphrase would defeat the point
+	 * of asking. `runId` is what lets the approval arrive in a later, separate
+	 * request.
+	 */
+	| { k: 'approval'; runId: string; id: string; name: string; args: unknown }
 	/** A guardrail aborted the run. */
 	| { k: 'tripwire'; reason: string; processor?: string }
 	/** The run finished. */
@@ -152,6 +161,15 @@ export function project(chunk: unknown): ColophonEvent | null {
 				name: p.toolName ? String(p.toolName) : undefined,
 				result: p.error ?? 'tool failed',
 				failed: true
+			};
+
+		case 'tool-call-approval':
+			return {
+				k: 'approval',
+				runId: c.runId ?? '',
+				id: String(p.toolCallId ?? ''),
+				name: String(p.toolName ?? ''),
+				args: p.args ?? p.input ?? null
 			};
 
 		case 'tripwire':

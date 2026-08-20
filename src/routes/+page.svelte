@@ -1,5 +1,5 @@
 <script lang="ts">
-	import { run } from '$lib/agent/stream-client';
+	import { run, respond } from '$lib/agent/stream-client';
 	import { addUsage, type ColophonEvent, type Usage } from '$lib/agent/events';
 	import { tick } from 'svelte';
 	import { resolve } from '$app/paths';
@@ -13,6 +13,14 @@
 		tools: { id: string; name: string; failed?: boolean; done: boolean; subagent?: string }[];
 		usage?: Usage;
 		error?: string;
+		/**
+		 * A tool call waiting on the reader.
+		 *
+		 * Held on the turn rather than in a modal: the decision belongs beside the
+		 * work that prompted it, and a dialog that covers the conversation makes it
+		 * harder to judge whether the brief is right.
+		 */
+		approval?: { runId: string; id: string; name: string; args: unknown; deciding?: boolean };
 	}
 
 	let turns = $state<Turn[]>([]);
@@ -94,6 +102,15 @@
 			case 'tripwire':
 				turn.error = `Blocked by ${event.processor ?? 'a guardrail'}: ${event.reason}`;
 				break;
+			case 'approval':
+				turn.thinking = false;
+				turn.approval = {
+					runId: event.runId,
+					id: event.id,
+					name: event.name,
+					args: event.args
+				};
+				break;
 			case 'error':
 				turn.error = event.message;
 				break;
@@ -128,6 +145,37 @@
 
 		busy = false;
 		controller = undefined;
+	}
+
+	async function decide(turn: Turn, approve: boolean) {
+		const pending = turn.approval;
+		if (!pending || pending.deciding) return;
+		pending.deciding = true;
+		busy = true;
+
+		await respond({
+			runId: pending.runId,
+			toolCallId: pending.id,
+			approve,
+			onEvent: (event) => {
+				apply(turn, event);
+				follow();
+			},
+			onError: (message) => {
+				turn.error = message;
+			}
+		});
+
+		turn.approval = undefined;
+		busy = false;
+	}
+
+	/** The brief, as a readable string — what is actually being approved. */
+	function briefOf(args: unknown): string {
+		if (args && typeof args === 'object' && 'prompt' in args) {
+			return String((args as { prompt: unknown }).prompt);
+		}
+		return JSON.stringify(args, null, 2);
 	}
 
 	function stop() {
@@ -209,6 +257,39 @@
 
 					{#if turn.text}
 						<p class="whitespace-pre-wrap">{turn.text}</p>
+					{/if}
+
+					{#if turn.approval}
+						<div
+							class="mt-2 rounded border border-amber-400/60 bg-amber-50/60 p-3 dark:border-amber-700/60 dark:bg-amber-950/20"
+						>
+							<p
+								class="font-mono text-[0.7rem] tracking-widest text-amber-700 uppercase dark:text-amber-500"
+							>
+								Approve · {turn.approval.name}
+							</p>
+							<p class="mt-1 text-xs text-neutral-600 dark:text-neutral-400">
+								This spends money. You are approving the exact brief below, as written.
+							</p>
+							<pre
+								class="mt-2 max-h-56 overflow-auto rounded border border-neutral-200 bg-white/70 p-2 font-mono text-[0.72rem] whitespace-pre-wrap dark:border-neutral-800 dark:bg-neutral-900/60">{briefOf(
+									turn.approval.args
+								)}</pre>
+							<div class="mt-2 flex gap-2">
+								<button
+									onclick={() => decide(turn, true)}
+									disabled={turn.approval.deciding}
+									class="rounded border border-neutral-900 bg-neutral-900 px-3 py-1.5 font-mono text-xs text-white disabled:opacity-40 dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
+									>approve</button
+								>
+								<button
+									onclick={() => decide(turn, false)}
+									disabled={turn.approval.deciding}
+									class="rounded border border-neutral-300 px-3 py-1.5 font-mono text-xs disabled:opacity-40 dark:border-neutral-700"
+									>decline</button
+								>
+							</div>
+						</div>
 					{/if}
 
 					{#if turn.error}

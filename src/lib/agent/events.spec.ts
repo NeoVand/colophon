@@ -164,6 +164,32 @@ describe('project marks delegation', () => {
 	});
 });
 
+describe('approval', () => {
+	it('carries the literal arguments, because that is what is being approved', () => {
+		const event = project({
+			type: 'tool-call-approval',
+			runId: 'run_1',
+			payload: {
+				toolCallId: 'call_9',
+				toolName: 'generate_image',
+				args: { prompt: 'A chalk diagram labelled "READ"', slug: 'read' }
+			}
+		});
+		expect(event).toEqual({
+			k: 'approval',
+			runId: 'run_1',
+			id: 'call_9',
+			name: 'generate_image',
+			args: { prompt: 'A chalk diagram labelled "READ"', slug: 'read' }
+		});
+	});
+
+	it('keeps the runId, which is what lets approval arrive in a later request', () => {
+		const event = project({ type: 'tool-call-approval', runId: 'run_x', payload: {} });
+		expect((event as { runId: string }).runId).toBe('run_x');
+	});
+});
+
 describe('readUsage', () => {
 	it('flattens Mastra usage to five numbers', () => {
 		expect(readUsage(USAGE)).toEqual({
