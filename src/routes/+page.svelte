@@ -9,6 +9,7 @@
 	import LibraryPanel from '$lib/components/xray/LibraryPanel.svelte';
 	import SpendBar from '$lib/components/xray/SpendBar.svelte';
 	import ContextPanel from '$lib/components/xray/ContextPanel.svelte';
+	import MemoryPanel from '$lib/components/xray/MemoryPanel.svelte';
 
 	/**
 	 * Two columns: the work, and the dissection.
@@ -52,6 +53,8 @@
 		{#if xray}
 			<aside class="flank">
 				<SpendBar />
+				<div class="hr"></div>
+				<MemoryPanel />
 				<div class="hr"></div>
 				<div class="slot context"><ContextPanel /></div>
 				<div class="hr"></div>
@@ -128,6 +131,11 @@
 		min-height: 0;
 		display: flex;
 		flex-direction: column;
+		/* `min-height: 0` lets a slot shrink to nothing when a sibling grows, and
+		   a shrunk slot whose child does not scroll spills its text over whatever
+		   is below. Clipping here means the worst case is content cut off rather
+		   than two panels printed on top of each other. */
+		overflow: hidden;
 	}
 	.slot > :global(*) {
 		flex: 1;
