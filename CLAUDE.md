@@ -169,6 +169,17 @@ code: it is more accurate than the upstream docs in several places, including
 
 ---
 
+## Design language
+
+Inherited from harnessXray, deliberately: retro-minimal instrument panel.
+Hairlines rather than cards, small radius, mono micro-labels, type and space
+doing the work. Four themes that retint the instruments, not just the wallpaper.
+Panel arrangement and interaction copy across — that UX was iterated on hard and
+there is nothing to improve by redoing it.
+
+The book's house style and the image-briefing doctrine are in `docs/BOOK.md`.
+Read it before generating any plate.
+
 ## Repository rules
 
 **The repo is public. The vault is private.** Research output, reading history,
