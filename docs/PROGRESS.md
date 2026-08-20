@@ -114,7 +114,7 @@ Updated as milestones land. After a context compaction, read this first.
 - **2026-08-20** — M2 done. Neon connected, Mastra memory persisting, the gate shipped.
 
   Verified: a second request in the same thread recalls the conversation, and a
-  request in a *brand new thread* still knows the reader's field — that is
+  request in a _brand new thread_ still knows the reader's field — that is
   resource-scoped working memory, and it is the feature the whole "memory is
   the moat" idea rests on.
 
@@ -130,3 +130,19 @@ Updated as milestones land. After a context compaction, read this first.
     reformatted matched nothing and reported success, so the memory wiring was
     never actually written while every check passed. Patches now assert their
     target exists first. This cost more time than the other two combined.
+
+- **2026-08-20** — `fetch_paper`. HTML edition (LaTeXML) with an abstract
+  fallback. 77 tests passing, 2 network tests gated behind `LIVE=1`.
+
+  **Two things the live fetch taught us:**
+  - arXiv's "Report GitHub Issue" modal was landing at the top of every paper's
+    extracted text — its form labels, verbatim, ahead of the title. Found by
+    printing the first 180 characters of a real fetch. `articleOnly()` now keeps
+    only `<article class="ltx_document">`, which is ~4.6 KB of furniture removed
+    per paper, on every turn that carries it.
+  - **arXiv has backfilled LaTeXML further than harnessXray assumed.** Attention
+    Is All You Need (2017) has a full HTML edition. The PDF path is therefore
+    much less important than planned — worth deferring rather than building now.
+
+  `OPENALEX_MAILTO` is set to mmv@mit.edu, locally and on Vercel, so the polite
+  pool is in effect (~100k/day rather than ~100/day per IP).

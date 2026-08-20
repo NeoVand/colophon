@@ -28,7 +28,7 @@ The escape clause ("unless the user asked") is exactly what the book plates use.
   No saturated colour anywhere.
 - **Composition**: one literal metaphor per plate, centred, generous margins.
   A featureless human silhouette appears for scale and relatability.
-- **Annotation**: numbers and short phrases hand-lettered *inside* the drawing
+- **Annotation**: numbers and short phrases hand-lettered _inside_ the drawing
   with a curved arrow to what they refer to ("40,000 tokens in", "200 back").
   The annotation is the teaching; the picture is the mnemonic.
 - **Size**: 1536×1024, `quality: "high"`.
