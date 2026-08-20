@@ -6,12 +6,12 @@ import { join } from 'node:path';
  * No component may name one of its own classes after a Tailwind utility.
  *
  * This exists because of a bug that took an hour to find by reading and ten
- * seconds to find by measuring. `ContextRing` called its wrapper `.ring`, which
- * is also a Tailwind utility, and Tailwind v4 emits a utility for any candidate
- * it finds in the source — including a class we wrote for ourselves. So the
- * cockpit's largest instrument shipped inside a hard 1px rectangle that appears
- * nowhere in its stylesheet, and the user's report was, reasonably, "this really
- * weird thing, which I don't know what that is".
+ * seconds to find by measuring. A gauge called its wrapper `.ring`, which is
+ * also a Tailwind utility, and Tailwind v4 emits a utility for any candidate it
+ * finds in the source — including a class we wrote for ourselves. So the
+ * component shipped inside a hard 1px rectangle that appears nowhere in its
+ * stylesheet, and the report was, reasonably, "this really weird thing, which I
+ * don't know what that is".
  *
  * The mechanism is worth stating exactly, because the obvious defence does not
  * work. Utilities live in `@layer utilities`; a Svelte component's scoped rules

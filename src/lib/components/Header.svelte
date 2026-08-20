@@ -6,7 +6,6 @@
 	import { theme, THEMES } from '$lib/theme.svelte';
 	import Menu, { type MenuOption } from '$lib/components/ui/Menu.svelte';
 	import Tooltip from '$lib/components/ui/Tooltip.svelte';
-	import type { FlankMode } from '$lib/layout.svelte';
 
 	/**
 	 * The bar that never goes away.
@@ -26,8 +25,6 @@
 	let {
 		flank,
 		onflank,
-		mode,
-		onmode,
 		onsettings,
 		onabout,
 		onthreads,
@@ -35,8 +32,6 @@
 	}: {
 		flank: boolean;
 		onflank: () => void;
-		mode: FlankMode;
-		onmode: (mode: FlankMode) => void;
 		onsettings: () => void;
 		onabout: () => void;
 		onthreads: () => void;
@@ -122,22 +117,6 @@
 	</Tooltip>
 
 	<span class="sep" aria-hidden="true"></span>
-
-	<!-- Only offered while the flank is open. A cockpit with nowhere to be drawn
-	     is a control that does nothing, which is worse than one that is absent. -->
-	{#if flank}
-		<Tooltip text={mode === 'cockpit' ? 'Show the panels' : 'Draw the instruments'}>
-			<button
-				class="icon"
-				class:on={mode === 'cockpit'}
-				onclick={() => onmode(mode === 'cockpit' ? 'panels' : 'cockpit')}
-				aria-label="Cockpit mode"
-				aria-pressed={mode === 'cockpit'}
-			>
-				<HugeiconsIcon icon={ICON.graph} size={14} />
-			</button>
-		</Tooltip>
-	{/if}
 
 	<Tooltip text={flank ? 'Hide the X-ray' : 'Show the X-ray'}>
 		<button class="icon" class:on={flank} onclick={onflank} aria-label="X-ray" aria-pressed={flank}>

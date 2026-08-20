@@ -5,8 +5,8 @@ import { browser } from '$app/environment';
  *
  * The flank used to be a hard 22rem, which is a decision about someone else's
  * monitor. This holds the things a reader is allowed to move — how wide the
- * flank is, which instruments are in it, in what order, and whether it is
- * showing the panel stack or the cockpit — and remembers them.
+ * flank is, which instruments are in it, and in what order — and remembers
+ * them.
  *
  * Two keys rather than one, on purpose. The width is written *during a drag*,
  * by `Split.svelte`, hundreds of times a minute; the shape changes when someone
@@ -25,12 +25,6 @@ const SHAPE_KEY = 'colophon:layout';
 /** Kept separate from the shape so shutting the flank cannot lose the order. */
 const OPEN_KEY = 'colophon:layout:open';
 
-/**
- * What the flank is showing. `panels` is the stack of instruments; `cockpit` is
- * the single drawn readout that replaces them.
- */
-export type FlankMode = 'panels' | 'cockpit';
-
 const DEFAULT_FLANK = 26;
 
 /**
@@ -47,7 +41,6 @@ interface Shape {
 	order: string[];
 	hidden: string[];
 	collapsed: string[];
-	mode: FlankMode;
 }
 
 /**
@@ -96,12 +89,12 @@ class LayoutState {
 	hidden = $state<string[]>([]);
 	/** Panels folded down to their label. */
 	collapsed = $state<string[]>([]);
-	mode = $state<FlankMode>('panels');
 	/**
-	 * Whether the flank is on screen at all — distinct from `mode`, which is
-	 * what it shows once it is. Someone who wants a research companion and not
-	 * an instrument panel should be able to shut the whole thing, and still find
-	 * their panel order untouched when they open it again.
+	 * Whether the flank is on screen at all.
+	 *
+	 * Someone who wants a research companion and not an instrument panel should
+	 * be able to shut the whole thing, and still find their panel arrangement
+	 * untouched when they open it again.
 	 */
 	showFlank = $state(false);
 
@@ -128,7 +121,6 @@ class LayoutState {
 			this.order = ids(saved.order) ?? this.order;
 			this.hidden = ids(saved.hidden) ?? this.hidden;
 			this.collapsed = ids(saved.collapsed) ?? this.collapsed;
-			if (saved.mode === 'cockpit' || saved.mode === 'panels') this.mode = saved.mode;
 		} catch {
 			// A half-written or hand-edited blob costs you your arrangement, not
 			// your session. Falling through leaves the defaults standing.
@@ -195,12 +187,6 @@ class LayoutState {
 		this.#save();
 	}
 
-	setMode(mode: FlankMode): void {
-		if (mode === this.mode) return;
-		this.mode = mode;
-		this.#save();
-	}
-
 	/** Back to the shipped arrangement, width included. */
 	toggleFlank(): void {
 		this.showFlank = !this.showFlank;
@@ -211,7 +197,6 @@ class LayoutState {
 		this.hidden = [];
 		this.collapsed = [];
 		this.order = [];
-		this.mode = 'panels';
 		this.setFlank(DEFAULT_FLANK);
 		this.#save();
 	}
@@ -223,8 +208,7 @@ class LayoutState {
 			// localStorage should be plain data.
 			order: $state.snapshot(this.order),
 			hidden: $state.snapshot(this.hidden),
-			collapsed: $state.snapshot(this.collapsed),
-			mode: this.mode
+			collapsed: $state.snapshot(this.collapsed)
 		};
 		try {
 			localStorage.setItem(SHAPE_KEY, JSON.stringify(shape));

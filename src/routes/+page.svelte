@@ -16,7 +16,6 @@
 	import ThreadList from '$lib/components/chat/ThreadList.svelte';
 	import SettingsSheet from '$lib/components/SettingsSheet.svelte';
 	import AboutSheet from '$lib/components/AboutSheet.svelte';
-	import Cockpit from '$lib/components/cockpit/Cockpit.svelte';
 
 	import WorkflowPanel from '$lib/components/xray/WorkflowPanel.svelte';
 	import EventTimeline from '$lib/components/xray/EventTimeline.svelte';
@@ -100,8 +99,6 @@
 	<Header
 		flank={layout.showFlank}
 		onflank={() => layout.toggleFlank()}
-		mode={layout.mode}
-		onmode={(m) => layout.setMode(m)}
 		onsettings={() => (settingsOpen = true)}
 		onabout={() => (aboutOpen = true)}
 		onthreads={() => (threadsOpen = true)}
@@ -109,15 +106,7 @@
 	/>
 
 	<main>
-		<!--
-			The cockpit is not a flank mode. It owns `main`, chat included — see the
-			note at the top of `Cockpit.svelte` for why every version that squeezed
-			it into the right-hand pane read as the X-ray having been taken away and
-			something stranger left in its place.
-		-->
-		{#if layout.showFlank && layout.mode === 'cockpit'}
-			<Cockpit {chat} />
-		{:else if layout.showFlank}
+		{#if layout.showFlank}
 			<PaneGroup direction="horizontal" autoSaveId="co:root" class="group">
 				<Pane defaultSize={34} minSize={22}>{@render chat()}</Pane>
 				<Divider />

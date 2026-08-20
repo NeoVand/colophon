@@ -62,7 +62,11 @@ export interface LoggedEvent {
 
 const ZERO: Usage = { input: 0, output: 0, total: 0, reasoning: 0, cached: 0 };
 
-class Session {
+/**
+ * Exported for tests only — the app uses the `session` singleton at the bottom.
+ * A second live instance would be a second conversation with the same storage.
+ */
+export class Session {
 	turns = $state<Turn[]>([]);
 	events = $state<LoggedEvent[]>([]);
 	status = $state<'idle' | 'running' | 'waiting'>('idle');
@@ -301,11 +305,32 @@ class Session {
 			onEvent: (event) => this.#apply(turn, event),
 			onError: (message) => {
 				turn.error = message;
+				// Without this the card's buttons stay disabled for good and the
+				// only way out of a failed decision is a reload. A decision that
+				// did not go through has not been made.
+				pending.deciding = false;
 			}
 		});
 
-		turn.approval = undefined;
-		this.status = 'idle';
+		/*
+		 * Clear the slot only if it still holds the decision we just made.
+		 *
+		 * A resumed run can suspend *again* before its stream ends — ask for two
+		 * infographics and the second `generate_image` is requested and suspended
+		 * while this very `respond()` is still reading. `#apply` puts that second
+		 * approval in `turn.approval`, and the unconditional `= undefined` that
+		 * used to sit here threw it away: the card vanished, the composer
+		 * re-enabled, and the run was left suspended on the server with nothing on
+		 * screen able to release it. Approving from the stale card that was still
+		 * in the DOM then sent the *first* call's id back, which is where
+		 *
+		 *     resumeStream() cannot resume tool call "call_…" because it is not
+		 *     suspended
+		 *
+		 * came from — the id was real, it had simply already been resumed.
+		 */
+		if (turn.approval === pending) turn.approval = undefined;
+		this.status = turn.approval ? 'waiting' : 'idle';
 	}
 
 	stop(): void {

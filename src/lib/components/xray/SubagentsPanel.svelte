@@ -25,7 +25,7 @@
 	 *
 	 * Chronological rather than grouped by subagent: what a delegation was
 	 * *asked* is most of what makes it worth reading, and it differs per
-	 * dispatch. The cockpit's crew lanes are the grouped reading.
+	 * dispatch.
 	 *
 	 * Nothing is passed in to make this work — it is folded out of the tool
 	 * records the run already publishes.
