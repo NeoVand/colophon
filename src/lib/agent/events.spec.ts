@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { project, readUsage, addUsage, type ColophonEvent } from './events';
+import { project, readUsage, addUsage, subagentOf, type ColophonEvent } from './events';
 
 /**
  * Fixtures are real chunks, copied verbatim from a gpt-5 run against the
@@ -128,6 +128,39 @@ describe('project', () => {
 		).toBeNull();
 		expect(project(null)).toBeNull();
 		expect(project({})).toBeNull();
+	});
+});
+
+describe('subagentOf', () => {
+	it('recognises a delegation from the tool name Mastra gives it', () => {
+		// There is no chunk kind for "a subagent ran"; the tool name is the only
+		// signal that a whole second context window was spent.
+		expect(subagentOf('agent-paperReader')).toBe('paper reader');
+		expect(subagentOf('agent-critic')).toBe('critic');
+	});
+
+	it('leaves ordinary tools alone', () => {
+		expect(subagentOf('search_papers')).toBeUndefined();
+		expect(subagentOf('cite')).toBeUndefined();
+	});
+});
+
+describe('project marks delegation', () => {
+	it('tags a subagent call so the UI can draw a lane', () => {
+		expect(
+			project({
+				type: 'tool-call',
+				payload: { toolCallId: 'c1', toolName: 'agent-paperReader', args: { prompt: 'read' } }
+			})
+		).toMatchObject({ k: 'tool-call', subagent: 'paper reader' });
+	});
+
+	it('leaves an ordinary tool call untagged', () => {
+		const event = project({
+			type: 'tool-call',
+			payload: { toolCallId: 'c1', toolName: 'cite', args: {} }
+		});
+		expect((event as { subagent?: string }).subagent).toBeUndefined();
 	});
 });
 

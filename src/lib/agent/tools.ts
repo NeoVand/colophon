@@ -29,13 +29,37 @@ import { SourceRegistry, formatCitation, type Source } from './sources';
  */
 const EXCERPT_CHARS = 24_000;
 
+/**
+ * What a subagent may read.
+ *
+ * Far larger, because a subagent's context window is *thrown away* when it
+ * returns — the cost is paid once instead of on every subsequent turn. That
+ * asymmetry is the entire reason subagents exist, and it is why the reader can
+ * afford a whole paper while the parent cannot afford an excerpt.
+ */
+const SUBAGENT_EXCERPT_CHARS = 200_000;
+
 export interface ResearchTools {
 	registry: SourceRegistry;
 	tools: Record<string, ReturnType<typeof createTool>>;
 }
 
-export function createResearchTools(): ResearchTools {
-	const registry = new SourceRegistry();
+export interface ToolOptions {
+	/**
+	 * Share a registry across parent and subagents.
+	 *
+	 * This is what makes delegation work: the reader subagent fetches a paper,
+	 * which promotes it to depth 'read' in the shared registry, so the *parent*
+	 * can then cite it for a claim about its contents — even though the parent
+	 * never saw the text.
+	 */
+	registry?: SourceRegistry;
+	excerptChars?: number;
+}
+
+export function createResearchTools(options: ToolOptions = {}): ResearchTools {
+	const registry = options.registry ?? new SourceRegistry();
+	const excerptChars = options.excerptChars ?? EXCERPT_CHARS;
 
 	const search_papers = createTool({
 		id: 'search_papers',
@@ -96,7 +120,7 @@ export function createResearchTools(): ResearchTools {
 			};
 			registry.register(source);
 
-			const truncated = paper.chars > EXCERPT_CHARS;
+			const truncated = paper.chars > excerptChars;
 			return {
 				arxivId: paper.arxivId,
 				title: known?.title ?? paper.title,
@@ -104,7 +128,7 @@ export function createResearchTools(): ResearchTools {
 				sections: paper.sections,
 				chars: paper.chars,
 				truncated,
-				text: paper.text.slice(0, EXCERPT_CHARS),
+				text: paper.text.slice(0, excerptChars),
 				...(truncated
 					? {
 							note: `Excerpt only — ${paper.chars} characters total. The section list above is complete; ask about a specific section if you need more.`
@@ -176,4 +200,16 @@ export function createResearchTools(): ResearchTools {
 		registry,
 		tools: { search_papers, fetch_paper, cite, bibliography }
 	};
+}
+
+/**
+ * The tool set a paper-reader subagent carries: reading, and nothing else.
+ *
+ * No search (it is given an id), no cite (it reports notes, not references),
+ * no bibliography. A subagent whose reply contract is "notes on one paper"
+ * should not be able to wander.
+ */
+export function createReaderTools(registry: SourceRegistry): ResearchTools {
+	const full = createResearchTools({ registry, excerptChars: SUBAGENT_EXCERPT_CHARS });
+	return { registry, tools: { fetch_paper: full.tools.fetch_paper } };
 }

@@ -10,7 +10,7 @@
 		text: string;
 		/** Set while the model is reasoning and this turn has no text yet. */
 		thinking?: boolean;
-		tools: { id: string; name: string; failed?: boolean; done: boolean }[];
+		tools: { id: string; name: string; failed?: boolean; done: boolean; subagent?: string }[];
 		usage?: Usage;
 		error?: string;
 	}
@@ -65,7 +65,15 @@
 				turn.thinking = event.state === 'start' && turn.text === '';
 				break;
 			case 'tool-call':
-				turn.tools.push({ id: event.id, name: event.name, done: false });
+				turn.tools.push({
+					id: event.id,
+					// A delegation is shown by the subagent's name, not by the
+					// `agent-paperReader` tool id — what happened is "a paper was
+					// read in its own context window", not "a tool was called".
+					name: event.subagent ?? event.name,
+					subagent: event.subagent,
+					done: false
+				});
 				break;
 			case 'tool-result': {
 				const tool = turn.tools.find((t) => t.id === event.id);
@@ -178,11 +186,16 @@
 						<ul class="mb-2 flex flex-wrap gap-1.5">
 							{#each turn.tools as tool (tool.id)}
 								<li
-									class="rounded border px-1.5 py-0.5 font-mono text-[0.7rem] {tool.failed
-										? 'border-red-300 text-red-600 dark:border-red-900'
-										: tool.done
-											? 'border-neutral-300 text-neutral-500 dark:border-neutral-700'
-											: 'border-amber-300 text-amber-700 dark:border-amber-800 dark:text-amber-500'}"
+									class="rounded px-1.5 py-0.5 font-mono text-[0.7rem] {tool.subagent
+										? 'border-y border-r border-l-2 border-y-sky-300/60 border-r-sky-300/60 border-l-sky-500 text-sky-700 dark:border-y-sky-900 dark:border-r-sky-900 dark:text-sky-400'
+										: tool.failed
+											? 'border border-red-300 text-red-600 dark:border-red-900'
+											: tool.done
+												? 'border border-neutral-300 text-neutral-500 dark:border-neutral-700'
+												: 'border border-amber-300 text-amber-700 dark:border-amber-800 dark:text-amber-500'}"
+									title={tool.subagent
+										? 'A subagent ran in its own context window. Everything it read was paid for once and discarded; only its reply came back.'
+										: tool.name}
 								>
 									{tool.name}{tool.done ? '' : '…'}
 								</li>

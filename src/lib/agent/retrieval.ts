@@ -178,11 +178,23 @@ export function reassembleAbstract(inverted: Record<string, number[]> | undefine
 
 function toSource(work: OpenAlexWork): Source & { summary: string } {
 	const doi = (work.doi ?? work.ids?.doi ?? '').replace(/^https?:\/\/doi\.org\//i, '');
-	const arxivMatch = doi.match(/10\.48550\/arxiv\.(.+)$/i);
-	const arxivId = arxivMatch?.[1];
-	const url =
-		work.primary_location?.landing_page_url ??
-		(arxivId ? `https://arxiv.org/abs/${arxivId}` : doi ? `https://doi.org/${doi}` : '');
+	const url = work.primary_location?.landing_page_url ?? (doi ? `https://doi.org/${doi}` : '');
+
+	/**
+	 * Find the arXiv id in the DOI *or* the landing URL.
+	 *
+	 * Reading only the DOI was a real bug: OpenAlex often carries a publisher
+	 * DOI (or none) while its landing page is plainly an arXiv abstract URL. The
+	 * same paper then entered the registry keyed by URL from a search and by
+	 * arXiv id from a fetch — two entries for one paper, two rows in the library,
+	 * and a bibliography that cited one id while `cite` returned the other.
+	 *
+	 * Loose matching in the registry hid it at citation time, which is exactly
+	 * why it survived to be found by reading a bibliography.
+	 */
+	const arxivId =
+		doi.match(/10\.48550\/arxiv\.(.+)$/i)?.[1] ??
+		url.match(/arxiv\.org\/(?:abs|pdf|html)\/([^v?#]+)/i)?.[1];
 
 	return {
 		id: canonicalId({ arxivId, doi, url }),

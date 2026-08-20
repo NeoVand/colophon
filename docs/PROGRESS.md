@@ -175,12 +175,12 @@ Updated as milestones land. After a context compaction, read this first.
   Unauthenticated cron call → 401. Authenticated → runs.
 
   **Design notes worth keeping:**
-  - A *withheld* digest is a successful sweep. `lastSweptAt` advances either
+  - A _withheld_ digest is a successful sweep. `lastSweptAt` advances either
     way, or tomorrow re-reads the same papers to reach the same verdict. Only a
     genuine failure leaves the mark unmoved, so the next run retries.
   - Papers are remembered even when the digest is withheld — the reading
     happened, and forgetting it would mean paying to read them again.
-  - `outputProcessors` requires `processToolResult` to be *present*, and
+  - `outputProcessors` requires `processToolResult` to be _present_, and
     annotating the return type `: Processor` widens it back to optional, so the
     object stops satisfying the interface it was declared to satisfy. Inferred
     return type, explicitly typed hook args.
@@ -189,3 +189,24 @@ Updated as milestones land. After a context compaction, read this first.
 
 - **Resend account** for delivery. Everything up to the send is built; the
   digest is written and stored, it just is not mailed yet.
+
+- **2026-08-20** — the paper-reader subagent. Verified live: two readers ran in
+  parallel, each returning ~250 words, and `cite` with `requireRead: true`
+  then succeeded for *both* papers in the parent — provenance crossed the
+  delegation boundary while the text did not. 52.9k input, 45.3k cached.
+
+  The reader gets a 200 KB excerpt where the parent gets 24 KB, because its
+  context window is discarded when it returns. The cost is paid once instead of
+  on every subsequent turn. That asymmetry is the whole reason subagents exist.
+
+  **A bug the bibliography exposed:** the same paper could be keyed by arXiv id
+  from a fetch and by URL from a search, because `toSource` looked for the
+  arXiv id only in the DOI — OpenAlex often carries a publisher DOI with an
+  arXiv landing page. Two registry entries, two library rows. The registry's
+  loose matching hid it at citation time, which is exactly why it survived long
+  enough to be spotted by reading a bibliography rather than by a test.
+
+  Mastra exposes a subagent as a tool named `agent-<key>` and emits no distinct
+  chunk kind for delegation, so that string is the only signal a second context
+  window was spent. The projector reads it and tags the event, which is what
+  lets the UI draw a lane instead of one more tool chip.

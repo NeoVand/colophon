@@ -39,9 +39,16 @@ export type ColophonEvent =
 	 */
 	| { k: 'reasoning'; state: 'start' | 'end' }
 	/** The model asked for a tool. */
-	| { k: 'tool-call'; id: string; name: string; args: unknown }
+	| { k: 'tool-call'; id: string; name: string; args: unknown; subagent?: string }
 	/** A tool returned. */
-	| { k: 'tool-result'; id: string; name?: string; result: unknown; failed?: boolean }
+	| {
+			k: 'tool-result';
+			id: string;
+			name?: string;
+			result: unknown;
+			failed?: boolean;
+			subagent?: string;
+	  }
 	/** One step of the agent loop closed. */
 	| { k: 'step'; usage: Usage }
 	/** A guardrail aborted the run. */
@@ -64,6 +71,24 @@ export function readUsage(raw: unknown): Usage {
 		reasoning: u.reasoningTokens ?? 0,
 		cached: u.cachedInputTokens ?? 0
 	};
+}
+
+/**
+ * Delegation, recognised from the tool name.
+ *
+ * Mastra exposes a subagent as a tool called `agent-<key>` — there is no
+ * separate chunk kind for "a subagent ran", so the only signal that a whole
+ * second agent just spent its own context window is the shape of this string.
+ *
+ * Naming it here is what lets the UI draw a lane instead of one more tool chip,
+ * and the lane is the point: everything inside it was paid for once, in a
+ * window that was then discarded, while only the small reply came back.
+ */
+export function subagentOf(toolName: string): string | undefined {
+	const match = toolName.match(/^agent-(.+)$/);
+	if (!match) return undefined;
+	// paperReader → paper reader
+	return match[1].replace(/([a-z])([A-Z])/g, '$1 $2').toLowerCase();
 }
 
 interface Chunk {
@@ -98,21 +123,27 @@ export function project(chunk: unknown): ColophonEvent | null {
 		case 'reasoning-end':
 			return { k: 'reasoning', state: 'end' };
 
-		case 'tool-call':
+		case 'tool-call': {
+			const name = String(p.toolName ?? '');
 			return {
 				k: 'tool-call',
 				id: String(p.toolCallId ?? ''),
-				name: String(p.toolName ?? ''),
-				args: p.args ?? p.input ?? null
+				name,
+				args: p.args ?? p.input ?? null,
+				...(subagentOf(name) ? { subagent: subagentOf(name) } : {})
 			};
+		}
 
-		case 'tool-result':
+		case 'tool-result': {
+			const name = p.toolName ? String(p.toolName) : undefined;
 			return {
 				k: 'tool-result',
 				id: String(p.toolCallId ?? ''),
-				name: p.toolName ? String(p.toolName) : undefined,
-				result: p.result ?? p.output ?? null
+				name,
+				result: p.result ?? p.output ?? null,
+				...(name && subagentOf(name) ? { subagent: subagentOf(name) } : {})
 			};
+		}
 
 		case 'tool-error':
 			return {

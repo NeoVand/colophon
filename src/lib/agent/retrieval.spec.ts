@@ -142,6 +142,49 @@ describe('OpenAlex quota', () => {
 	});
 });
 
+describe('canonical ids', () => {
+	it('finds the arXiv id in a landing URL when the DOI is a publisher one', async () => {
+		// The bug this covers: keyed by URL from a search and by arXiv id from a
+		// fetch, the same paper became two entries and two library rows.
+		const fetchImpl = vi.fn(async (url: RequestInfo | URL) => {
+			if (String(url).includes('openalex')) {
+				return Response.json({
+					results: [
+						{
+							title: 'A Paper',
+							doi: 'https://doi.org/10.1234/publisher.5678',
+							primary_location: { landing_page_url: 'https://arxiv.org/abs/2608.13337v2' },
+							publication_year: 2026
+						}
+					]
+				});
+			}
+			return new Response('<feed></feed>');
+		}) as unknown as typeof fetch;
+
+		const [paper] = await searchPapers('x', { fetchImpl });
+		expect(paper.arxivId).toBe('2608.13337');
+		expect(paper.id).toBe('2608.13337');
+	});
+
+	it('still falls back to the DOI when there is no arXiv anywhere', async () => {
+		const fetchImpl = vi.fn(async (url: RequestInfo | URL) => {
+			if (String(url).includes('openalex')) {
+				return Response.json({
+					results: [
+						{ title: 'Journal Paper', doi: 'https://doi.org/10.1234/x', publication_year: 2024 }
+					]
+				});
+			}
+			return new Response('<feed></feed>');
+		}) as unknown as typeof fetch;
+
+		const [paper] = await searchPapers('x', { fetchImpl });
+		expect(paper.arxivId).toBeUndefined();
+		expect(paper.id).toBe('10.1234/x');
+	});
+});
+
 describe('searchPapers merge', () => {
 	it('degrades rather than fails when one service is down', async () => {
 		const fetchImpl = vi.fn(async (url: RequestInfo | URL) => {

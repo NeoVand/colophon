@@ -2,6 +2,7 @@ import { Agent } from '@mastra/core/agent';
 import { model } from '$lib/server/model';
 import { agentMemory, isStorageConfigured } from '$lib/server/storage';
 import { createResearchTools, type ResearchTools } from './tools';
+import { createPaperReader } from './paper-reader';
 
 /**
  * Colophon itself.
@@ -21,8 +22,14 @@ Search broadly, read narrowly. A search gives you titles and abstracts; that is
 enough to *choose* what to open and never enough to describe what a paper found.
 Open the few that matter.
 
-Reading is expensive and the cost recurs — a paper you fetch is re-sent on every
-later turn. Fetch the papers that carry the argument, not every result.
+**Delegate reading.** Use the paper-reader subagent rather than fetch_paper
+whenever you want a paper digested. It reads the whole thing in its own context
+window and hands you a page of notes; the full text never enters yours, and you
+do not pay for it again on every later turn. Several readers can run at once.
+Use fetch_paper directly only when you need a specific passage verbatim.
+
+A paper the reader opened is citable by you afterwards — provenance survives
+delegation even though the text does not.
 
 ## Citations
 
@@ -59,10 +66,15 @@ export function createColophon({ thread }: { thread?: string } = {}): ColophonRu
 	const research = createResearchTools();
 	const remembers = isStorageConfigured() && Boolean(thread);
 
+	// Shares the run's registry, so a paper it reads becomes citable by the
+	// parent — the provenance crosses the delegation boundary, the tokens do not.
+	const paperReader = createPaperReader(research.registry);
+
 	const agent = new Agent({
 		id: 'colophon',
 		name: 'Colophon',
 		instructions: INSTRUCTIONS,
+		agents: { paperReader },
 		// Always through the factory: the string and config-object model forms
 		// expose no fetch hook and would silently blind the X-ray. See CLAUDE.md.
 		model: model(),
