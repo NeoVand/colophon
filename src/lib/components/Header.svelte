@@ -109,6 +109,12 @@
 		</a>
 	</Tooltip>
 
+	<Tooltip text="Write — documents, drafts and papers">
+		<a class="icon" href={resolve('/write')} aria-label="Write">
+			<HugeiconsIcon icon={ICON.prose} size={14} />
+		</a>
+	</Tooltip>
+
 	<Tooltip text="The book — how all of this works">
 		<a class="icon" href={resolve('/book')} aria-label="Book">
 			<HugeiconsIcon icon={ICON.book} size={14} />
