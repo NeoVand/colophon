@@ -86,6 +86,17 @@
 
 	const rows = $derived(session.events);
 
+	/**
+	 * Nothing has happened yet, which the horizon draws differently.
+	 *
+	 * A flat line at 14% across the full width is a solid slab eight pixels tall,
+	 * and a solid horizontal slab spanning a window is a scrollbar — that is what
+	 * it was being read as. Broken into a mark per column with a gap between, the
+	 * same line becomes a ruled scale: time is divided here, nothing has landed in
+	 * it. The claim is the one a dial's tick marks make, and it stays true.
+	 */
+	const quiet = $derived(!rows.length);
+
 	let stripW = $state(0);
 	const COL = 3;
 
@@ -129,6 +140,7 @@
 
 <div
 	class="ribbon"
+	class:quiet
 	bind:clientWidth={stripW}
 	role="img"
 	aria-label="{rows.length} events over time"
@@ -177,5 +189,12 @@
 	}
 	.tick.on {
 		opacity: 0.62;
+	}
+
+	/* One mark per column instead of a continuous rule — see `quiet` above. The
+	   column is `COL` wide, so a 1px mark reads as a scale at any strip width. */
+	.ribbon.quiet .tick {
+		width: 1px;
+		margin-inline: auto;
 	}
 </style>

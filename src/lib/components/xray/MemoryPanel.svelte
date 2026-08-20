@@ -121,21 +121,11 @@
 		     nothing at all. -->
 		<p class="quiet pad">…</p>
 	{:else if !configured}
-		<EmptyState
-			icon={ICON.memory}
-			tone="memory"
-			title="No store attached"
-			note="Every conversation starts from the same blank page."
-		/>
+		<EmptyState icon={ICON.memory} tone="memory" title="No store attached" />
 	{:else if error}
 		<p class="err pad">{error}</p>
 	{:else if !filled}
-		<EmptyState
-			icon={ICON.memory}
-			tone="memory"
-			title="Nothing learned yet"
-			note="Scoped to you, not to this thread — it outlives the conversation."
-		/>
+		<EmptyState icon={ICON.memory} tone="memory" title="Nothing learned yet" />
 	{:else if open}
 		<div class="body"><Prose text={text ?? ''} /></div>
 	{:else}

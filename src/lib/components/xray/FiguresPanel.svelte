@@ -160,15 +160,10 @@
 
 <PanelFrame {bare} label="figures" icon={ICON.figure} tone="user" {readout}>
 	{#if !shots.length}
-		<EmptyState
-			icon={ICON.figure}
-			tone="user"
-			title="Nothing drawn yet"
-			note="The one tool that spends rather than reads, so it stops and asks first."
-		/>
+		<EmptyState icon={ICON.figure} tone="user" title="Nothing drawn yet" />
 	{:else}
 		<div class="scroll">
-			<ul class="grid">
+			<ul class="tiles">
 				{#each shots as shot (shot.id)}
 					<li>
 						<!--
@@ -219,7 +214,7 @@
 		padding: 0.6rem 0.7rem 0.8rem;
 	}
 
-	.grid {
+	.tiles {
 		margin: 0;
 		padding: 0;
 		list-style: none;

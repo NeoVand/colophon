@@ -138,6 +138,21 @@
 		gap: 2px;
 		/* The axis, and the whole empty state. A hairline per `docs/UI.md`. */
 		border-bottom: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
+		/*
+			Quarter gridlines, drawn always.
+
+			An axis alone is one line at the bottom of a large empty rectangle, and a
+			large empty rectangle is indistinguishable from a panel that failed to
+			render — the exact failure the rewritten empty states exist to avoid. Four
+			ruled lines make the same zero reading unmistakably a *chart*, and once
+			bars arrive they are the scale the bars are read against. A graticule
+			claims only "this axis is divided", which is true before any turn lands.
+		*/
+		background-image: repeating-linear-gradient(
+			to top,
+			color-mix(in oklab, var(--border) 34%, transparent) 0 1px,
+			transparent 1px 25%
+		);
 	}
 
 	.col {

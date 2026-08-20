@@ -149,12 +149,7 @@
 			note={reason || 'COLOPHON_TRACING is not set.'}
 		/>
 	{:else if !trace.rows.length}
-		<EmptyState
-			icon={ICON.trace}
-			tone="model"
-			title="Nothing timed yet"
-			note="On a shared clock, nine seconds shows as one slow model or six readers that queued."
-		/>
+		<EmptyState icon={ICON.trace} tone="model" title="Nothing timed yet" />
 	{:else if view === 'flame'}
 		<ul class="rows">
 			{#each trace.rows as node (node.key)}

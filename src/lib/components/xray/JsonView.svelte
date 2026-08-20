@@ -313,7 +313,7 @@
 			class:wrapped={full}>{preview}</span
 		>
 		{#if long}
-			<button class="more inline" type="button" onclick={() => (full = !full)}>
+			<button class="more tight" type="button" onclick={() => (full = !full)}>
 				{full ? 'less' : `all ${text.length.toLocaleString()}`}
 			</button>
 		{/if}
@@ -469,7 +469,7 @@
 	.more:hover {
 		color: var(--co-accent);
 	}
-	.more.inline {
+	.more.tight {
 		flex: none;
 		align-self: flex-start;
 	}

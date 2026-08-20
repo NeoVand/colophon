@@ -1,4 +1,5 @@
 <script lang="ts">
+	import type { Snippet } from 'svelte';
 	import { session } from '$lib/agent/session.svelte';
 	import { tokens } from '$lib/xray/format';
 	import Instrument from './Instrument.svelte';
@@ -8,118 +9,108 @@
 	import LibraryField from './gauges/LibraryField.svelte';
 	import SpendBars from './gauges/SpendBars.svelte';
 	import CrewLanes from './gauges/CrewLanes.svelte';
+	import GraphPanel from '$lib/components/xray/GraphPanel.svelte';
 
 	/**
-	 * The same run, drawn instead of listed.
+	 * The same run, drawn instead of listed — and drawn across the whole room.
 	 *
-	 * ── What was wrong with the first arrangement ───────────────────────────
-	 * It inherited harnessXray's composition whole, and harnessXray's cockpit is
-	 * a full screen. Three of its rules do not survive the change of scale, and
-	 * the version that kept them read as a broken page rather than as an
-	 * alternative view:
+	 * ── The mistake this version fixes ──────────────────────────────────────
+	 * Every earlier cockpit here was a *flank* mode: the chat kept its third of
+	 * the screen and the instruments were rearranged inside the other two. That
+	 * is why it read as "this really weird thing" rather than as a cockpit. A
+	 * flank is a place for panels; putting drawings there just makes a third
+	 * rendering of the same column, and since it also removed the panels it read
+	 * as the X-ray having been taken away and something stranger left behind.
 	 *
-	 * - **The horizon.** The event ribbon ran behind everything at 28% opacity.
-	 *   In a 1600px room that is scenery; in a 400px flank it is a grey smear
-	 *   lying across two live gauges, and on a fresh page — no events, no
-	 *   ticks — it was *nothing at all*, which is what "I do not know what that
-	 *   is" was pointing at. It is a labelled instrument now, at the top, in its
-	 *   own band. It is still the widest thing here because a run is a line of
-	 *   time; it is no longer underneath anything.
+	 * harnessXray's cockpit was never that. It is the whole screen, with the
+	 * conversation floating in the middle of it and no container around anything.
+	 * The mode is not "the flank, drawn"; it is "the run, from above". That is the
+	 * only arrangement in which a ring 300px across and a horizon 1300px wide are
+	 * both the right size, and the only one where taking the panels away is a
+	 * trade rather than a loss.
 	 *
-	 * - **Empty gauges.** Five of the six swapped their drawing for a caption —
-	 *   `nothing sent yet`, `no events yet`, `nothing retrieved yet` — so the
-	 *   first thing anyone saw was a sparse column of grey words in empty boxes.
-	 *   Every gauge now draws its face at zero: a ring with no arcs is still a
-	 *   ring, a ribbon with no events is a flat horizon, a bar chart with no bars
-	 *   is an axis. Not one of the captions came back.
+	 * So the deck now owns `main` and the chat lives inside it. The app header
+	 * stays put above — a mode you can enter and not get back out of is a trap
+	 * however good it looks, which is a lesson harnessXray learned by shipping one.
 	 *
-	 * - **The fixed stack.** One column of full-width bands wastes most of a
-	 *   1200px flank on a 200px circle, and the round gauges wasted it worst. The
-	 *   deck reflows on the flank's own measured width instead: the instruments
-	 *   are the same six at every size, but how many share a row is not.
-	 *
-	 * ── What did survive ────────────────────────────────────────────────────
-	 * 1. **Nothing scrolls.** Every instrument is drawn to fit whatever box it is
-	 *    given, and the bands divide the height by flex weight rather than
-	 *    claiming pixels, so the deck fits any height it is handed. `overflow:
-	 *    hidden` at the root enforces it rather than assuming it.
-	 * 2. **No borders.** A ring, a dial and a field of dots are already obviously
-	 *    three different objects. The only line drawn anywhere in here is
-	 *    `SpendBars`' axis, which is doing a job.
-	 * 3. **One anchor.** The context ring is weighted half again as large as the
-	 *    dial beside it, so the eye has somewhere to land first. That is what
-	 *    harnessXray's overlap was buying; overlap itself needs room this layout
-	 *    does not have, and a negative margin at flank width just clips a gauge.
-	 *
-	 * The no-grid rule is the one deliberately let go, and it is worth saying why
-	 * rather than pretending. A grid reads as a table because of *alignment*, and
-	 * that argument is about a full screen of eleven tiles. Six instruments of
-	 * three different heights in a flank narrower than a phone in landscape have
-	 * nowhere else to be, and the failure the rule guards against — reading as a
-	 * form — is caused here by empty boxes and captions, both of which are gone.
-	 * The bands are ragged by height and by count, never a fixed matrix.
+	 * ── The rules that carried over ─────────────────────────────────────────
+	 * 1. **Nothing scrolls but the transcript.** Every instrument draws to fit
+	 *    the box it is handed; bands take a share of the height rather than
+	 *    claiming pixels. `overflow: hidden` at the root enforces it.
+	 * 2. **No borders.** A ring, a horizon and a field of dots are already three
+	 *    obviously different objects. The only lines drawn in here are
+	 *    `SpendBars`' axis and the graph's connectors, both doing a job.
+	 * 3. **Every gauge draws its face at zero.** A ring with no arcs is a ring; a
+	 *    chart with no bars is an axis. Not one of them swaps its drawing for a
+	 *    caption, because a blank box and a broken box look identical — which was
+	 *    most of why the first version could not be recognised at rest.
+	 * 4. **One anchor.** The context ring is weighted half again as large as
+	 *    anything beside it, so the eye lands somewhere first.
 	 */
 
+	let { chat }: { chat: Snippet } = $props();
+
 	/**
-	 * The flank's own width, which is the only breakpoint that matters.
+	 * The deck's own width, not the window's.
 	 *
-	 * A media query would ask the *window*, and this component lives in a
-	 * resizable pane: the window can be 1600px wide while this box is 380px. Bound
-	 * from the element, never written from an `$effect` — that would be the
-	 * `effect_update_depth_exceeded` trap `docs/UI.md` names, since the class it
-	 * sets changes the layout it measures.
+	 * Bound from the element rather than written from an `$effect`: the class it
+	 * would set changes the layout it measures, which is the
+	 * `effect_update_depth_exceeded` trap `docs/UI.md` names.
 	 */
 	let w = $state(0);
 
 	/**
-	 * How many instruments share the second band.
+	 * Whether the instruments get both flanks or only one.
 	 *
-	 * Two thresholds rather than one because the round gauges and the wide ones
-	 * fail differently. Under ~560px only the ring and the dial fit side by side
-	 * at all. Over ~820px a third fits beside them, which is what stops a 1200px
-	 * flank spending its whole top band on two circles.
+	 * Below this the centre column is squeezed to about forty characters by two
+	 * gutters, and a transcript that narrow is worse than an instrument moved. So
+	 * the left column folds into the right rather than the chat shrinking.
+	 *
+	 * One instrument does not survive the fold, and it is worth saying which and
+	 * why. Six gauges in a single rack leave the pipeline about 130px, and it
+	 * needs roughly 200 to draw seven stages at a readable size — under that it
+	 * scales to its floor and *still* clips, which is the one thing a drawing of
+	 * "what will execute" must never do. It is also the only instrument here that
+	 * is not about this run: the topology is the code's shape, fixed at deploy,
+	 * and during an ordinary conversation nothing in it lights up at all. So when
+	 * something has to go, it is the one whose reading does not change.
+	 * `GraphPanel` still carries it in the panel layout, in a pane you can drag.
 	 */
-	const across = $derived(w >= 820 ? 3 : w >= 560 ? 2 : 1);
+	const wide = $derived(w >= 1180);
 
 	const busy = $derived(session.status !== 'idle');
-
 	const calls = $derived(session.turns.reduce((n, t) => n + t.tools.length, 0));
+	const spent = $derived(session.usage.total);
 
 	/**
 	 * Distinct subagents actually dispatched.
 	 *
-	 * Counted here rather than read off `CrewLanes` because the deck has to know
-	 * whether that instrument exists *before* it mounts it — see the note in the
-	 * gauge about why it is the one with no honest empty state. Two lines of
-	 * set-building, not a second copy of the lane layout.
+	 * Counted here because the deck has to know whether that instrument exists
+	 * before it mounts it. An array with a linear `includes` rather than a `Set`:
+	 * the count is at most a handful of names, and a bare `Set` inside a rune is
+	 * what the Svelte linter flags because it cannot tell a throwaway from state.
 	 */
 	const crew = $derived.by(() => {
-		// An array with a linear `includes` rather than a `Set`: the count is at
-		// most a handful of names, and a bare `Set` inside a rune is the thing the
-		// Svelte linter flags because it cannot tell a throwaway from state.
 		const names: string[] = [];
 		for (const turn of session.turns)
 			for (const tool of turn.tools)
 				if (tool.subagent && !names.includes(tool.subagent)) names.push(tool.subagent);
 		return names.length;
 	});
-
-	const spent = $derived(session.usage.total);
 </script>
 
-{#snippet ribbon()}
-	<Instrument label="events" tone="--co-model" readout={String(session.events.length)} live={busy}>
-		<EventRibbon />
-	</Instrument>
-{/snippet}
-
+<!--
+	Each instrument is written once and placed by the deck below, rather than
+	spelled out in each of the two arrangements. That is how a readout drifts out
+	of sync with its twin the first time one of them is edited.
+-->
 {#snippet context()}
 	<Instrument
 		label="context"
 		tone="--co-tok-new"
 		readout={session.context ? `call ${session.context.call}` : '—'}
 		live={busy}
-		grow={1.5}
+		grow={1.6}
 	>
 		<ContextRing />
 	</Instrument>
@@ -128,6 +119,12 @@
 {#snippet tools()}
 	<Instrument label="tools" tone="--co-tool" readout={calls ? `${calls} calls` : '—'} live={busy}>
 		<ToolDial />
+	</Instrument>
+{/snippet}
+
+{#snippet graph()}
+	<Instrument label="pipeline" tone="--co-subagent" grow={1.4}>
+		<GraphPanel bare />
 	</Instrument>
 {/snippet}
 
@@ -142,86 +139,145 @@
 {/snippet}
 
 {#snippet spend()}
-	<Instrument label="spend" tone="--co-tok-out" readout={spent ? tokens(spent) : '—'}>
+	<Instrument label="spend" tone="--co-tok-out" readout={spent ? tokens(spent) : '—'} grow={0.9}>
 		<SpendBars />
 	</Instrument>
 {/snippet}
 
 {#snippet crewLanes()}
-	<Instrument label="crew" tone="--co-subagent" readout="{crew} lanes" live={busy}>
+	<Instrument label="crew" tone="--co-subagent" readout="{crew} lanes" live={busy} grow={0.7}>
 		<CrewLanes />
 	</Instrument>
 {/snippet}
 
-<!--
-	Each instrument is written once as a snippet and placed by the deck below.
+<div class="deck" class:wide bind:clientWidth={w}>
+	<!--
+		The horizon. Full width, at the top, labelled.
 
-	The alternative was the same `<Instrument>` block spelled out in two or three
-	branches, which is how a readout drifts out of sync with its twin the first
-	time one of them is edited.
--->
-<div class="cockpit" bind:clientWidth={w}>
-	<div class="band horizon">{@render ribbon()}</div>
-
-	<div class="band assembly">
-		{@render context()}
-		{@render tools()}
-		{#if across === 3}{@render library()}{/if}
+		A run is a line of time, so this is the one instrument whose natural shape
+		is the width of the screen. harnessXray runs it *behind* everything at low
+		opacity as scenery; that needs a screen with room to spare above and below
+		the chat, and here it left a grey smear lying across two live gauges. It is
+		an instrument in its own band instead — still the widest thing on the deck,
+		no longer underneath anything.
+	-->
+	<div class="horizon">
+		<Instrument
+			label="events"
+			tone="--co-model"
+			readout={String(session.events.length)}
+			live={busy}
+		>
+			<EventRibbon />
+		</Instrument>
 	</div>
 
-	{#if across === 3}
-		<div class="band">{@render spend()}</div>
-	{:else if across === 2}
-		<div class="band">{@render library()}{@render spend()}</div>
-	{:else}
-		<div class="band">{@render library()}</div>
-		<div class="band">{@render spend()}</div>
-	{/if}
+	<div class="floor">
+		{#if wide}
+			<aside class="rack left">
+				{@render context()}
+				{@render tools()}
+				{#if crew}{@render crewLanes()}{/if}
+			</aside>
+		{/if}
 
-	{#if crew}
-		<div class="band short">{@render crewLanes()}</div>
-	{/if}
+		<!--
+			The conversation, floating: no panel, no border, no header. `max-width`
+			rather than a share of the row, so the measure stays readable on a very
+			wide screen instead of the line length growing with the monitor.
+		-->
+		<section class="stage">{@render chat()}</section>
+
+		<aside class="rack right">
+			{#if wide}
+				{@render graph()}
+			{:else}
+				<div class="row">
+					{@render context()}
+					{@render tools()}
+				</div>
+			{/if}
+			{@render library()}
+			{@render spend()}
+			{#if crew && !wide}{@render crewLanes()}{/if}
+		</aside>
+	</div>
 </div>
 
 <style>
-	.cockpit {
+	.deck {
 		display: flex;
 		flex-direction: column;
-		gap: 1.1rem;
+		gap: 1rem;
+		width: 100%;
 		height: 100%;
 		min-height: 0;
+		/* Bottom padding is not symmetry — the last instrument in each rack is a
+		   readout on its own baseline (`SpendBars`' price, `LibraryField`'s key) and
+		   without it those sit on the window edge and get clipped by a pixel or two,
+		   which reads as a rendering fault rather than as a tight margin. */
+		padding: 0.85rem 1rem 0.7rem;
 		/* The one place the no-scroll rule is enforced rather than assumed. */
 		overflow: hidden;
 	}
 
-	.band {
+	/*
+		Measured in pixels, because a horizon has a natural thickness: a
+		proportional one vanishes in a short window and becomes a wall in a tall
+		one. `clamp` keeps it a line at both ends.
+	*/
+	.horizon {
+		flex: 0 0 clamp(46px, 8%, 70px);
 		display: flex;
-		gap: 1.4rem;
-		min-width: 0;
 		min-height: 0;
-		/* Weights, not pixels: the deck divides whatever height it is handed, so a
-		   short window compresses the bands instead of pushing one off the bottom.
-		   Each `Instrument` carries its own `flex` for the horizontal share. */
-		flex: 1 1 0;
+	}
+
+	.floor {
+		flex: 1;
+		min-height: 0;
+		display: flex;
+		gap: 1.6rem;
 	}
 
 	/*
-		The ribbon's band is the one measured in pixels, because a horizon has a
-		natural thickness and a proportional one either vanishes in a short window
-		or becomes a wall in a tall one. `clamp` keeps it a line at both ends.
+		The instrument columns.
+
+		Percentages rather than pixels: at 1400px each rack is ~350px, which is
+		what the round gauges need to be read by area, and at 2000px they grow with
+		the screen instead of stranding the chat in the middle of a field.
 	*/
-	.band.horizon {
-		flex: 0 0 clamp(44px, 9%, 64px);
+	.rack {
+		flex: 0 0 25%;
+		min-width: 0;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		gap: 1.2rem;
+	}
+	/* Only one rack, so it may have more of the room to divide. */
+	.deck:not(.wide) .rack.right {
+		flex: 0 0 34%;
 	}
 
-	/* The top band earns extra height: the two round gauges read by area, and
-	   the anchor is only an anchor if it is visibly the biggest thing here. */
-	.band.assembly {
-		flex: 1.55 1 0;
+	/* Two round gauges side by side when they are sharing a single column. */
+	.row {
+		display: flex;
+		gap: 1.2rem;
+		min-width: 0;
+		min-height: 0;
+		flex: 1.5 1 0;
 	}
 
-	/* Lanes are rows of text; they do not get better with more room. */
-	.band.short {
-		flex: 0.7 1 0;
+	.stage {
+		flex: 1 1 0;
+		min-width: 0;
+		min-height: 0;
+		display: flex;
+		flex-direction: column;
+		/* A transcript is prose. Past about this measure it stops being read and
+		   starts being scanned, however much monitor there is. */
+		max-width: 46rem;
+		margin: 0 auto;
+		width: 100%;
 	}
 </style>

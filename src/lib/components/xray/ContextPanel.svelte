@@ -132,12 +132,7 @@
 	{/snippet}
 
 	{#if !ctx}
-		<EmptyState
-			icon={ICON.context}
-			tone="memory"
-			title="Nothing sent yet"
-			note="Read off the provider's own fetch, not from the agent."
-		/>
+		<EmptyState icon={ICON.context} tone="memory" title="Nothing sent yet" />
 	{:else}
 		<div class="bar" role="img" aria-label="What the outgoing request is made of">
 			{#each merged as b (b.kind)}

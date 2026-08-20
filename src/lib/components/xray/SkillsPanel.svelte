@@ -91,12 +91,7 @@
 	readout={skills.length ? `${skills.length} available · ${activeCount} activated` : undefined}
 >
 	{#if !skills.length}
-		<EmptyState
-			icon={ICON.skills}
-			tone="accent"
-			title="No skills attached"
-			note="A skill is a document the model reads only when it asks for it by name."
-		/>
+		<EmptyState icon={ICON.skills} tone="accent" title="No skills attached" />
 	{:else}
 		<div class="content">
 			<ul class="list">

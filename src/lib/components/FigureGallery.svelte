@@ -202,7 +202,7 @@
 				it needs eight illustrations from eating the database."
 		/>
 	{:else}
-		<ul class="grid">
+		<ul class="tiles">
 			{#each figures as figure, i (figure.key)}
 				<li>
 					<a
@@ -338,7 +338,7 @@
 		color: var(--co-error);
 	}
 
-	.grid {
+	.tiles {
 		margin: 0;
 		padding: 0;
 		list-style: none;

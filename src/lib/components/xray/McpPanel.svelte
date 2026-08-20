@@ -124,17 +124,12 @@
 		<p class="err pad">{fetchError}</p>
 	{:else if !configured}
 		<!--
-			The note earns its line: for most readers this panel is never populated,
-			and what MCP *is* cannot be guessed from the words "no servers". The
-			shape of the config is shown rather than described — a sample is shorter
-			than the sentence explaining it.
+			The one empty state here that keeps something under its title, because
+			what is under it is a *sample of the config*, not a sentence about MCP.
+			It tells a reader what to type; the sentence it replaced only told them
+			what to feel. Shown rather than described, and shorter either way.
 		-->
-		<EmptyState
-			icon={ICON.mcp}
-			tone="tool"
-			title="No servers connected"
-			note="How an agent picks up tools it did not ship with."
-		/>
+		<EmptyState icon={ICON.mcp} tone="tool" title="No servers connected" />
 		<div class="hint">
 			{#if configError}
 				<p class="err">{configError}</p>

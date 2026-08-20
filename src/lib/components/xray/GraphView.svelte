@@ -163,47 +163,74 @@
 	/* Three segments of one taper, not a dashed stroke: a dash pattern on a
 	   1px line vanishes in the dark themes, where --border is 9% white. */
 	const BROKEN = [wedge(0, 0.3), wedge(0.4, 0.68), wedge(0.78, 1)];
+
+	/**
+	 * ── Shrink rather than clip ─────────────────────────────────────────────
+	 * `overflow: hidden` on its own made this instrument *lie*. In a short box a
+	 * seven-stage pipeline drew START, scope, search, select and stopped — with
+	 * no scrollbar, no fade and no marker, because the whole surface is built on
+	 * the rule that nothing scrolls. A reader has no way to tell that reading
+	 * from a pipeline which genuinely has three stages, and a drawing whose whole
+	 * claim is "this is what will execute" cannot be allowed to show four fifths
+	 * of it silently.
+	 *
+	 * So the drawing scales down when it would not otherwise fit. A `transform`
+	 * is safe where a reflow is not: it paints outside the layout, so the
+	 * measurement that decides `k` cannot be changed by applying `k` — which is
+	 * what would make this an `effect_update_depth_exceeded` trap rather than two
+	 * bindings. `drawnH` is the untransformed layout height and stays put.
+	 *
+	 * The floor is deliberate. Below about 60% the step ids stop being readable,
+	 * and a drawing scaled to illegibility is no more honest than a clipped one —
+	 * so under that the clip comes back, and the caller has given this instrument
+	 * a box too small to hold it. Every real arrangement in the app clears it.
+	 */
+	let boxH = $state(0);
+	let drawnH = $state(0);
+	const k = $derived(drawnH > 0 && boxH > 0 ? Math.max(0.6, Math.min(1, boxH / drawnH)) : 1);
 </script>
 
-<figure class="flow" aria-label={summary}>
-	{#if !stages.length}
-		<p class="quiet">No topology to draw.</p>
-	{:else}
-		{#each stages as stage, i (stage.key)}
-			{#if i > 0}
-				<div class="link" aria-hidden="true">
-					<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none">
-						{#each stage.conditional ? BROKEN : SOLID as d, s (s)}
-							<path class="taper" {d} />
-						{/each}
-					</svg>
-				</div>
-			{/if}
-
-			<div class="stage" class:terminal={stage.terminal} class:running={stage.running}>
-				<span class="tick co-num" aria-hidden="true">
-					{#if stage.terminal}<span class="pip"></span>{:else}{stage.index}{/if}
-				</span>
-
-				{#if stage.terminal}
-					<span class="cap co-eyebrow">{stage.nodes[0].node.label}</span>
-				{:else}
-					<div class="lane">
-						{#each stage.nodes as p (p.key)}
-							{@const text = tip(p.node)}
-							{#if text}
-								<Tooltip {text} side="top">
-									{@render box(p.node, p.fill)}
-								</Tooltip>
-							{:else}
-								{@render box(p.node, p.fill)}
-							{/if}
-						{/each}
+<figure class="flow" aria-label={summary} bind:clientHeight={boxH}>
+	<div class="fit" style:--k={k} bind:clientHeight={drawnH}>
+		{#if !stages.length}
+			<p class="quiet">No topology to draw.</p>
+		{:else}
+			{#each stages as stage, i (stage.key)}
+				{#if i > 0}
+					<div class="link" aria-hidden="true">
+						<svg viewBox="0 0 {W} {H}" preserveAspectRatio="none">
+							{#each stage.conditional ? BROKEN : SOLID as d, s (s)}
+								<path class="taper" {d} />
+							{/each}
+						</svg>
 					</div>
 				{/if}
-			</div>
-		{/each}
-	{/if}
+
+				<div class="stage" class:terminal={stage.terminal} class:running={stage.running}>
+					<span class="tick co-num" aria-hidden="true">
+						{#if stage.terminal}<span class="pip"></span>{:else}{stage.index}{/if}
+					</span>
+
+					{#if stage.terminal}
+						<span class="cap co-eyebrow">{stage.nodes[0].node.label}</span>
+					{:else}
+						<div class="lane">
+							{#each stage.nodes as p (p.key)}
+								{@const text = tip(p.node)}
+								{#if text}
+									<Tooltip {text} side="top">
+										{@render box(p.node, p.fill)}
+									</Tooltip>
+								{:else}
+									{@render box(p.node, p.fill)}
+								{/if}
+							{/each}
+						</div>
+					{/if}
+				</div>
+			{/each}
+		{/if}
+	</div>
 </figure>
 
 {#snippet box(node: StepNode, fill: number)}
@@ -235,12 +262,24 @@
 		margin: 0;
 		min-width: 0;
 		min-height: 0;
-		/* Clipped here as well as by the panel body, so an overlong pipeline
-		   cannot spill onto the legend. The padding is the halo's room: the ring
-		   is painted 6px outside the last box, and a clip box flush with the
-		   boxes would slice it into a corner. */
+		/* Still clipped, but now only as the backstop below the scale floor — see
+		   the note on `k`. The padding is the halo's room: the ring is painted 6px
+		   outside the last box, and a clip box flush with the boxes would slice it
+		   into a corner. */
 		overflow: hidden;
 		padding: 0 0 6px;
+	}
+
+	/* The scaled drawing. `top center` rather than `top left` so a shrunk
+	   pipeline stays under its own label instead of drifting to one side. */
+	.fit {
+		display: flex;
+		flex-direction: column;
+		align-items: stretch;
+		min-width: 0;
+		transform: scale(var(--k, 1));
+		transform-origin: top center;
+		transition: transform 200ms ease;
 	}
 
 	.stage {

@@ -137,12 +137,7 @@
 				<button class="co-eyebrow retry" onclick={load}>retry</button>
 			</p>
 		{:else if !inventory.length}
-			<EmptyState
-				icon={ICON.tool}
-				tone="tool"
-				title="No tools wired up"
-				note="Every tool is also a permanent line item on every request."
-			/>
+			<EmptyState icon={ICON.tool} tone="tool" title="No tools wired up" />
 		{:else}
 			<div class="scroll">
 				<ul class="rows">

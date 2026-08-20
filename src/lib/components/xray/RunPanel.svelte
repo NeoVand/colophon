@@ -87,12 +87,7 @@
 	actions={status}
 >
 	{#if !started}
-		<EmptyState
-			icon={ICON.model}
-			tone="model"
-			title="No run yet"
-			note="Cached input is the cheapest line in the bill and the easiest to lose."
-		/>
+		<EmptyState icon={ICON.model} tone="model" title="No run yet" />
 	{:else}
 		<div class="scroll">
 			<ul class="dial">

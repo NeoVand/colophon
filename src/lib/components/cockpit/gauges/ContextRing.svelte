@@ -99,7 +99,7 @@
 	const showKey = $derived(boxW >= 190 && key.length > 0);
 </script>
 
-<div class="ring" class:solo={!showKey} bind:clientWidth={boxW}>
+<div class="dial" class:solo={!showKey} bind:clientWidth={boxW}>
 	<svg
 		viewBox="-50 -50 100 100"
 		preserveAspectRatio="xMidYMid meet"
@@ -160,7 +160,19 @@
 </div>
 
 <style>
-	.ring {
+	/*
+		Named `.dial`, not `.ring`, and that is not a preference.
+
+		Tailwind ships a bare `.ring` utility, Svelte keeps our class name alongside
+		its scoping hash, and utilities live in `@layer utilities` — so an unlayered
+		component rule wins every property it *sets* and loses every property it
+		does not. This rule never mentions `box-shadow`, so Tailwind's
+		`0 0 0 1px` ring painted a hard rectangle around the cockpit's largest
+		instrument, which is the box that could not be explained by reading this
+		file. `tailwind-collisions.spec.ts` now fails the build on any class name
+		that shares a word with a utility.
+	*/
+	.dial {
 		height: 100%;
 		width: 100%;
 		display: flex;
@@ -172,7 +184,7 @@
 	}
 	/* Without a key there is nothing to sit beside, so the ring takes the middle
 	   rather than hugging the left edge with a void to its right. */
-	.ring.solo {
+	.dial.solo {
 		justify-content: center;
 	}
 

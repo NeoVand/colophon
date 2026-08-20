@@ -155,12 +155,7 @@
 
 <PanelFrame label="workflow" icon={ICON.workflow} tone="subagent" {readout}>
 	{#if !events.length}
-		<EmptyState
-			icon={ICON.workflow}
-			tone="subagent"
-			title="Nothing has run yet"
-			note={stages || 'Deep research runs as a few named stages, each timed as it goes.'}
-		/>
+		<EmptyState icon={ICON.workflow} tone="subagent" title="Nothing has run yet" note={stages} />
 	{:else}
 		<ol>
 			{#each rows as row, index (row.id)}

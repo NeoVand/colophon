@@ -60,12 +60,7 @@
 	readout={u.total ? u.total.toLocaleString() : undefined}
 >
 	{#if !sum}
-		<EmptyState
-			icon={ICON.spend}
-			tone="tok-new"
-			title="Nothing spent yet"
-			note="A conversation that is mostly cached input is cheap however large it looks."
-		/>
+		<EmptyState icon={ICON.spend} tone="tok-new" title="Nothing spent yet" />
 	{:else}
 		<div class="content">
 			<div class="bar" role="img" aria-label="Token breakdown">

@@ -108,95 +108,99 @@
 	/>
 
 	<main>
-		{#if layout.showFlank}
+		<!--
+			The cockpit is not a flank mode. It owns `main`, chat included — see the
+			note at the top of `Cockpit.svelte` for why every version that squeezed
+			it into the right-hand pane read as the X-ray having been taken away and
+			something stranger left in its place.
+		-->
+		{#if layout.showFlank && layout.mode === 'cockpit'}
+			<Cockpit {chat} />
+		{:else if layout.showFlank}
 			<PaneGroup direction="horizontal" autoSaveId="co:root" class="group">
 				<Pane defaultSize={34} minSize={22}>{@render chat()}</Pane>
 				<Divider />
 				<Pane defaultSize={66} minSize={30}>
-					{#if layout.mode === 'cockpit'}
-						<div class="cockpit-host"><Cockpit /></div>
-					{:else}
-						<PaneGroup direction="horizontal" autoSaveId="co:xray" class="group">
-							<!-- ── what is happening right now ───────────────────── -->
-							<Pane defaultSize={44} minSize={24}>
-								<PaneGroup direction="vertical" autoSaveId="co:live" class="group">
-									<Pane defaultSize={26} minSize={10} collapsible collapsedSize={6}>
-										<WorkflowPanel />
-									</Pane>
-									<Divider direction="vertical" />
-									<Pane defaultSize={42} minSize={16}>
-										<EventTimeline />
-									</Pane>
-									<Divider direction="vertical" />
-									<Pane defaultSize={32} minSize={12} collapsible collapsedSize={6}>
-										<ContextPanel />
-									</Pane>
-								</PaneGroup>
-							</Pane>
+					<PaneGroup direction="horizontal" autoSaveId="co:xray" class="group">
+						<!-- ── what is happening right now ───────────────────── -->
+						<Pane defaultSize={44} minSize={24}>
+							<PaneGroup direction="vertical" autoSaveId="co:live" class="group">
+								<Pane defaultSize={26} minSize={10} collapsible collapsedSize={6}>
+									<WorkflowPanel />
+								</Pane>
+								<Divider direction="vertical" />
+								<Pane defaultSize={42} minSize={16}>
+									<EventTimeline />
+								</Pane>
+								<Divider direction="vertical" />
+								<Pane defaultSize={32} minSize={12} collapsible collapsedSize={6}>
+									<ContextPanel />
+								</Pane>
+							</PaneGroup>
+						</Pane>
 
-							<Divider />
+						<Divider />
 
-							<!-- ── what the machine is made of ───────────────────── -->
-							<Pane defaultSize={56} minSize={26}>
-								<PaneGroup direction="vertical" autoSaveId="co:machine" class="group">
-									<Pane defaultSize={40} minSize={16}>
-										<PanelFrame
-											label="gathered"
-											icon={ICON.library}
-											tone="library"
-											bind:active={gathered}
-											tabs={[
-												{ id: 'library', label: 'library', icon: ICON.paper },
-												{ id: 'figures', label: 'figures', icon: ICON.figure }
-											]}
-										>
-											{#if gathered === 'library'}
-												<LibraryPanel bare />
-											{:else}
-												<FiguresPanel bare />
-											{/if}
-										</PanelFrame>
-									</Pane>
-									<Divider direction="vertical" />
-									<Pane defaultSize={40} minSize={18}>
-										<PanelFrame
-											label="harness"
-											icon={ICON.workflow}
-											tone="subagent"
-											bind:active={machine}
-											tabs={[
-												{ id: 'graph', label: 'graph' },
-												{ id: 'tools', label: 'tools' },
-												{ id: 'crew', label: 'crew' },
-												{ id: 'skills', label: 'skills' },
-												{ id: 'memory', label: 'memory' },
-												{ id: 'mcp', label: 'mcp' },
-												{ id: 'trace', label: 'trace' }
-											]}
-										>
-											{#if machine === 'graph'}<GraphPanel bare />
-											{:else if machine === 'tools'}<ToolsPanel bare />
-											{:else if machine === 'crew'}<SubagentsPanel bare />
-											{:else if machine === 'skills'}<SkillsPanel bare />
-											{:else if machine === 'memory'}<MemoryPanel bare />
-											{:else if machine === 'mcp'}<McpPanel bare />
-											{:else}<TracePanel bare />{/if}
-										</PanelFrame>
-									</Pane>
-									<Divider direction="vertical" />
-									<!-- The two readouts you glance at rather than read, so they
+						<!-- ── what the machine is made of ───────────────────── -->
+						<Pane defaultSize={56} minSize={26}>
+							<PaneGroup direction="vertical" autoSaveId="co:machine" class="group">
+								<Pane defaultSize={40} minSize={16}>
+									<PanelFrame
+										label="gathered"
+										icon={ICON.library}
+										tone="library"
+										bind:active={gathered}
+										tabs={[
+											{ id: 'library', label: 'library', icon: ICON.paper },
+											{ id: 'figures', label: 'figures', icon: ICON.figure }
+										]}
+									>
+										{#if gathered === 'library'}
+											<LibraryPanel bare />
+										{:else}
+											<FiguresPanel bare />
+										{/if}
+									</PanelFrame>
+								</Pane>
+								<Divider direction="vertical" />
+								<Pane defaultSize={40} minSize={18}>
+									<PanelFrame
+										label="harness"
+										icon={ICON.workflow}
+										tone="subagent"
+										bind:active={machine}
+										tabs={[
+											{ id: 'graph', label: 'graph' },
+											{ id: 'tools', label: 'tools' },
+											{ id: 'crew', label: 'crew' },
+											{ id: 'skills', label: 'skills' },
+											{ id: 'memory', label: 'memory' },
+											{ id: 'mcp', label: 'mcp' },
+											{ id: 'trace', label: 'trace' }
+										]}
+									>
+										{#if machine === 'graph'}<GraphPanel bare />
+										{:else if machine === 'tools'}<ToolsPanel bare />
+										{:else if machine === 'crew'}<SubagentsPanel bare />
+										{:else if machine === 'skills'}<SkillsPanel bare />
+										{:else if machine === 'memory'}<MemoryPanel bare />
+										{:else if machine === 'mcp'}<McpPanel bare />
+										{:else}<TracePanel bare />{/if}
+									</PanelFrame>
+								</Pane>
+								<Divider direction="vertical" />
+								<!-- The two readouts you glance at rather than read, so they
 									     sit at the bottom where the eye rests between runs. -->
-									<Pane defaultSize={20} minSize={10} collapsible collapsedSize={6}>
-										<PaneGroup direction="horizontal" autoSaveId="co:vitals" class="group">
-											<Pane defaultSize={50} minSize={25}><RunPanel /></Pane>
-											<Divider />
-											<Pane defaultSize={50} minSize={25}><SpendBar /></Pane>
-										</PaneGroup>
-									</Pane>
-								</PaneGroup>
-							</Pane>
-						</PaneGroup>
-					{/if}
+								<Pane defaultSize={20} minSize={10} collapsible collapsedSize={6}>
+									<PaneGroup direction="horizontal" autoSaveId="co:vitals" class="group">
+										<Pane defaultSize={50} minSize={25}><RunPanel /></Pane>
+										<Divider />
+										<Pane defaultSize={50} minSize={25}><SpendBar /></Pane>
+									</PaneGroup>
+								</Pane>
+							</PaneGroup>
+						</Pane>
+					</PaneGroup>
 				</Pane>
 			</PaneGroup>
 		{:else}
@@ -254,11 +258,5 @@
 		display: flex;
 		flex-direction: column;
 		min-width: 0;
-	}
-
-	.cockpit-host {
-		height: 100%;
-		padding: 0.8rem;
-		overflow: hidden;
 	}
 </style>

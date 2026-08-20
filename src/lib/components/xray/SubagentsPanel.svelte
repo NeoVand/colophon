@@ -158,12 +158,7 @@
 
 <PanelFrame {bare} label="crew" icon={ICON.subagent} tone="subagent" {readout}>
 	{#if !delegations.length}
-		<EmptyState
-			icon={ICON.subagent}
-			tone="subagent"
-			title="Nothing delegated yet"
-			note="What a subagent reads is billed to its own window and thrown away; only the reply comes back."
-		/>
+		<EmptyState icon={ICON.subagent} tone="subagent" title="Nothing delegated yet" />
 	{:else}
 		<div class="scroll">
 			<ul class="rows">
