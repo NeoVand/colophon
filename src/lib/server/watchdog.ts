@@ -1,18 +1,27 @@
 /**
  * A `fetch` that refuses to wait forever.
  *
- * ── Why this exists ─────────────────────────────────────────────────────────
- * A real run stalled for six minutes with seven paper-reader subagents showing
- * live timers, a spinning status dot and a composer that would not come back.
- * The process was at 0% CPU with one idle HTTPS socket open. Nothing was
- * broken, nothing was retrying, and nothing ever would: not one request in the
- * agent path carried a deadline, so an upstream that accepted a request and
- * then went quiet held the whole run open indefinitely — with a UI that looked,
- * the entire time, exactly like a run that was working.
+ * ── Why this exists, and what it is NOT for ─────────────────────────────────
+ * It was written after a run appeared to hang: seven paper-reader subagents
+ * with live timers, four minutes of nothing, the process at 0% CPU, and one
+ * open socket to the provider where six concurrent calls should have opened
+ * six. That looked exactly like a stalled upstream.
  *
- * That is the worst failure mode a surface like this can have. Colophon's whole
- * argument is that you can see what the machine is doing; a hang that renders
- * as *busy* is the X-ray lying by omission.
+ * It was not one. `fanout.live.spec.ts` ran the same fan-out to completion —
+ * 224s without memory, 268s with — so the run was slow, not stuck, and would
+ * have finished if anyone had waited. The diagnosis was wrong, and this says so
+ * rather than keeping the flattering version.
+ *
+ * What survived is the other half of that reasoning, which holds regardless:
+ * **not one request in the agent path carried a deadline.** An upstream that
+ * accepted a request and then went quiet really would have held the run open
+ * forever, and nothing anywhere would have noticed. That the app had not yet
+ * met one is luck rather than design.
+ *
+ * So this is a backstop against silence, never a budget on slowness, and the
+ * deadlines are set far longer than any healthy turn observed. A watchdog that
+ * fires on a slow-but-working run is worse than none: it converts a wait into a
+ * failure the reader cannot tell from a real one.
  *
  * ── Two deadlines, not one ──────────────────────────────────────────────────
  * A single total timeout cannot work here. Model responses stream, and a long

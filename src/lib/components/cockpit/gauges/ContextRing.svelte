@@ -85,6 +85,33 @@
 
 	const toneOf = (kind: PartKind) => `var(${TONE[kind] ?? '--co-gate'})`;
 
+	/*
+	 * Short names for the key, because the real ones do not fit and — worse —
+	 * do not *differ* when they are cut.
+	 *
+	 * Three of the eight bands begin "tool-", and the key's name column is a
+	 * fixed measure so the share bars start on one line. Ellipsised, the three
+	 * largest bands of a research turn all read `TOOL-…`: a legend in which the
+	 * top three rows are indistinguishable is worse than no legend, because it
+	 * looks like it is telling you something.
+	 *
+	 * `ContextPanel` keeps the full names. It is the auditing view, its rows are
+	 * as wide as the flank, and the exact kind is the thing being audited there.
+	 * Here the reading is proportions, and the label only has to say which slice
+	 * is which.
+	 */
+	const SHORT: Record<string, string> = {
+		system: 'system',
+		'tool-schema': 'schemas',
+		user: 'you',
+		assistant: 'replies',
+		'tool-call': 'calls',
+		'tool-result': 'results',
+		'reasoning-ref': 'thinking',
+		other: 'other'
+	};
+	const nameOf = (kind: PartKind) => SHORT[kind] ?? kind;
+
 	/**
 	 * The gauge's own width, which decides whether the key gets to exist.
 	 *
@@ -139,7 +166,7 @@
 		<ul class="key">
 			{#each key as b (b.kind)}
 				<li>
-					<span class="name">{b.kind}</span>
+					<span class="name">{nameOf(b.kind)}</span>
 					<!-- The bar is what makes this fill a wide box. A four-row legend of
 					     short mono words leaves most of a 500px cell empty; the same four
 					     rows with a share bar between the name and the number use every
@@ -198,6 +225,19 @@
 		min-width: 0;
 	}
 
+	/*
+		With a key beside it, the ring may not take the whole width.
+
+		`height: 100%` on a square viewBox makes the svg as wide as the instrument
+		is tall, and in the cockpit's left rack that is nearly the whole column —
+		so the key was handed about fifty pixels and rendered as `too`, `sys`,
+		`use`: four rows of three-letter stubs naming nothing. Capped, the ring is
+		still comfortably the larger half and the names have room to be words.
+	*/
+	.dial:not(.solo) svg {
+		max-width: 58%;
+	}
+
 	text {
 		text-anchor: middle;
 		dominant-baseline: middle;
@@ -251,8 +291,10 @@
 	.key .name {
 		flex: none;
 		/* Fixed measure so the bars start on one line — the bars are the thing
-		   being compared, and bars that begin at four different offsets cannot be. */
-		width: 7.5ch;
+		   being compared, and bars that begin at four different offsets cannot be.
+		   Wide enough for the longest name in `SHORT`, so nothing is ellipsised
+		   and no two rows can collapse into the same stub. */
+		width: 8ch;
 		overflow: hidden;
 		text-overflow: ellipsis;
 		white-space: nowrap;

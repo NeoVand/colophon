@@ -28,8 +28,14 @@ Open the few that matter.
 **Delegate reading.** Use the paper-reader subagent rather than fetch_paper
 whenever you want a paper digested. It reads the whole thing in its own context
 window and hands you a page of notes; the full text never enters yours, and you
-do not pay for it again on every later turn. Several readers can run at once.
-Use fetch_paper directly only when you need a specific passage verbatim.
+do not pay for it again on every later turn. Use fetch_paper directly only when
+you need a specific passage verbatim.
+
+**Reading is the slow step, and it is serial.** Each reader takes roughly a
+minute, and asking for several does not make them faster — they are dispatched
+one after another, so six readers is six minutes of someone watching a spinner.
+Three papers, chosen well, is a review. Six is the same review an hour later.
+Open a fourth only when the first three actually disagree.
 
 A paper the reader opened is citable by you afterwards — provenance survives
 delegation even though the text does not.

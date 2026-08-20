@@ -155,6 +155,19 @@
 
 	const total = $derived(calls.reduce((n, c) => n + c.dur, 0));
 
+	/**
+	 * How big the hub reading can be without leaving the hole it sits in.
+	 *
+	 * The inner clearance is about 44 viewBox units across. A mono digit is
+	 * roughly 0.6em, so `chars * 0.6 * size <= 44` — solved for size and clamped
+	 * so a two-character reading does not balloon and a seven-character one still
+	 * has a floor it stays legible at.
+	 */
+	const hubSize = $derived.by(() => {
+		const text = total ? ms(total) : '—';
+		return Math.max(6.5, Math.min(11, 44 / (text.length * 0.6)));
+	});
+
 	/** Four tools at most beside the dial; the rest are a count. */
 	const named = $derived(groups.slice(0, 4));
 	const rest = $derived(Math.max(0, groups.length - named.length));
@@ -195,7 +208,18 @@
 		     instrument's header readout and is deliberately not repeated here:
 		     three numbers on one gauge is a panel, and one of them said the same
 		     thing twice. -->
-		<text class="big" y="-1">{total ? ms(total) : '—'}</text>
+		<!--
+			The hub reading shrinks with its own length.
+
+			`ms()` is `12ms` on the first call and `38m 29s` once seven readers have
+			been running for five minutes, and the second is three times as wide as
+			the first. At a fixed 11px the long form ran out under the spokes and
+			collided with the `tools` line below it — a gauge that becomes unreadable
+			exactly when the run is at its most interesting. `textLength` was the
+			other option and it distorts the glyphs; picking a size keeps the mono
+			face honest.
+		-->
+		<text class="big" y="-1" style:font-size="{hubSize}px">{total ? ms(total) : '—'}</text>
 		<text class="sub" y="8">{groups.length ? `${groups.length} tools` : 'idle'}</text>
 	</svg>
 
@@ -281,7 +305,6 @@
 		fill: var(--foreground);
 	}
 	.big {
-		font-size: 11px;
 		font-weight: 600;
 	}
 	.sub {

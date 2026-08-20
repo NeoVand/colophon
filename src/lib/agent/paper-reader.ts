@@ -19,6 +19,19 @@ import type { SourceRegistry } from './sources';
  * That asymmetry is the whole point, and it is why the reader is allowed a
  * 200 KB excerpt where the parent is capped at 24 KB.
  *
+ * ── How long this takes, measured ───────────────────────────────────────────
+ * About a minute per paper, and **the parent dispatches them one at a time**.
+ * That is not obvious and it cost an afternoon to establish, so it is written
+ * down here: `paper-reader.live.spec.ts` runs three readers directly and they
+ * finish together, while `fanout.live.spec.ts` puts four behind the parent and
+ * the turn takes 224s — four readers' worth, in series. The description below
+ * used to end "several calls can run at once", which was wrong and which the
+ * parent's instructions repeated back as a reason to open more papers.
+ *
+ * The cost lands on a person watching a spinner, so the honest place to spend
+ * it is fewer, better-chosen papers. Both files are opt-in (`LIVE=1`) because
+ * they spend real money; re-run them before trusting these numbers again.
+ *
  * ── The reply contract ──────────────────────────────────────────────────────
  * Stated explicitly, and the discipline that makes subagents worth having. A
  * subagent that answers "here is everything I found" has *moved* the cost, not
@@ -63,7 +76,8 @@ export function createPaperReader(registry: SourceRegistry): Agent {
 		description:
 			'Reads ONE arXiv paper in full and returns at most 250 words of structured notes. ' +
 			'Use this instead of fetch_paper whenever you want a paper digested — it keeps the ' +
-			'full text out of your own context. One paper per call; several calls can run at once.',
+			'full text out of your own context. One paper per call, and calls are dispatched ' +
+			'one after another: each takes about a minute, so four papers is four minutes.',
 		instructions: INSTRUCTIONS,
 		model: model(),
 		tools
