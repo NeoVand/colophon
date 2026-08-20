@@ -155,13 +155,13 @@ Updated as milestones land. After a context compaction, read this first.
   of them cached.
 
   **On the citation guarantee:** asked to cite a fabricated paper, the model
-  declined *without calling the tool* — the instructions were enough. That is
+  declined _without calling the tool_ — the instructions were enough. That is
   the desired outcome and proves nothing about the structure, so the refusal is
   now tested at the tool layer directly: unretrieved ids, plausible-but-absent
   ids, listed-but-unread papers, and registry isolation between runs.
 
   `EXCERPT_CHARS` caps a paper at 24k characters in a tool result. A full paper
-  is 40–200 KB and a tool result is re-sent on *every* later turn, so an
+  is 40–200 KB and a tool result is re-sent on _every_ later turn, so an
   uncapped read would dominate the bill for the rest of the conversation. The
   real fix is a paper-reader subagent with its own context window; the cap is
   what stands in until then.
