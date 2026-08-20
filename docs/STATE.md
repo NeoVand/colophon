@@ -3,7 +3,7 @@
 **Read this first after a context compaction.** `CLAUDE.md` has the load-bearing
 technical facts; this has the situation.
 
-_Last updated: 2026-08-20, during the /loop session._
+_Last updated: 2026-08-19, during the /loop session._
 
 ## What this is
 
@@ -23,7 +23,7 @@ The user is **Neo Mohsenvand** (MIT Media Lab). One reader, one vault.
 cd ~/repos/colophon
 npm run dev -- --port 5180 --strictPort   # dev server
 npm run check                              # svelte-check — keep at 0 errors
-npx vitest run --project=server            # 90 tests, all must pass
+npx vitest run --project=server            # 148 tests, all must pass
 LIVE=1 npx vitest run --project=server     # + network/paid tests (opt-in)
 npx vercel deploy --prod --yes             # deploy
 ```
@@ -52,14 +52,24 @@ curl -c jar -X POST "$ORIGIN/login" -H "Origin: $ORIGIN" -d "password=$PASSWORD"
 
 ## In flight
 
-**Approval is done** — verified with a real round trip: the run paused, the
-approval arrived in a separate request, the image rendered (788 KB) and served
-at `/figures/…`. Next is Resend delivery, then the X-ray panels.
+**Delivery is built and unverifiable until Neo makes a Resend account.** The
+path degrades honestly: with no key it is never attempted, and `deliveredAt`
+null with `deliveryError` null is the pair's way of saying so (attempted and
+refused sets the error). `/lab/email` renders the real email as `text/html`, so
+the part I *can* check has been checked by looking at it.
 
-Historical note on why it works. The agent is now
-registered on a `Mastra` instance with storage so a suspended run survives into
-a _different_ HTTP request — without that, `approveToolCall()` fails with
-"snapshot not found".
+**The UI foundation landed**: design tokens, four themes, the session store, and
+three X-ray panels — spend, library, events. Verified live against a real run.
+
+Two facts worth keeping:
+
+- **`verdict` is not delivery.** The gate's answer and whether an email arrived
+  are different columns now. A delivery failure is deliberately *not* a sweep
+  failure — the research happened, and marking it failed would un-advance
+  `lastSweptAt` and re-read the whole period tomorrow.
+- **The reference list is what was *cited*, not what was read.** Built from
+  `registry.cited()`. Built from `read()` it silently omitted a paper the prose
+  attributed, because that paper was cited from its abstract.
 
 **Known limitation to be honest about:** the source registry is in-memory per
 request, so a tool needing it cannot currently be approved across requests.
@@ -68,11 +78,12 @@ registry, so this is not yet a bug — but it will be if `cite` ever needs a gat
 
 ## Next, in order
 
-1. Finish approval: endpoint emits it, `/api/agent/approve` resumes, UI card.
-2. **Email delivery** via Resend → `mmv@mit.edu` (address confirmed).
-3. **The X-ray panels** (M5) — wire plane, event taxonomy, ported panels.
-4. **The book** — see `docs/BOOK.md`. Neo reviews plates before they ship.
-5. Typst/LaTeX authoring; the vault as a document store.
+1. **The rest of the X-ray** — the context window taken apart (needs the fetch
+   tee wired through the server), memory, and a subagent lane view.
+2. **The book** — see `docs/BOOK.md`. Neo reviews plates before they ship.
+3. Typst/LaTeX authoring; the vault as a document store.
+4. A digests/subscriptions surface in the app — they exist in the database and
+   have no UI at all.
 
 ## Waiting on Neo
 
@@ -83,7 +94,11 @@ registry, so this is not yet a bug — but it will be if `cite` ever needs a gat
   (10 GB, zero egress) but needs a Cloudflare account and is not the constraint
   here. The store is behind an object-store-shaped interface in
   `src/lib/server/blobs.ts`, so either is a one-file swap.
-- **Resend account** for actually sending. Address is settled.
+- **Resend account** for actually sending, and `RESEND_API_KEY` set. Address is
+  settled (`mmv@mit.edu`). Two facts that will save time: a fresh account can
+  only send **from** `onboarding@resend.dev` and **to the address the account
+  was registered with**, so register it with `mmv@mit.edu`; the code defaults to
+  that sender and names this failure specifically if it happens anyway.
 
 ## Environment variables
 

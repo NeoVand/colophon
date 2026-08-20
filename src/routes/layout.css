@@ -480,14 +480,24 @@
 	outline: 2px solid var(--co-focus);
 	outline-offset: 0;
 	border-color: var(--co-focus);
+	/* Same trap as above: without this the plugin's blue ring sits underneath
+	   ours and the field gets two, in two different colours. */
+	box-shadow: none;
 }
 
 /* And chromeless ones opt *out*. The composer is a bare line of text on the
    page, not a box — ringing it draws an outline around nothing, and it is
-   focused nearly all the time, so the ring would be permanent furniture. */
+   focused nearly all the time, so the ring would be permanent furniture.
+   `box-shadow` as well as `outline`, and that is not belt-and-braces: the
+   forms plugin does not draw its ring with an outline. It sets
+   `outline: 2px solid transparent` and then paints the actual ring as a
+   `box-shadow` in Tailwind's default blue — so suppressing only the outline
+   removes nothing at all and leaves a blue box around the composer, which is
+   precisely what shipped until someone read the computed style. */
 .co-bare:focus,
 .co-bare:focus-visible {
 	outline: none;
+	box-shadow: none;
 }
 
 @media (prefers-reduced-motion: reduce) {
