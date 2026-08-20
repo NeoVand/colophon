@@ -93,6 +93,14 @@ export const papers = pgTable(
  * to stay silent on a thin week, and a gate whose rejections vanish is
  * impossible to tune — you cannot tell "nothing happened in the field" from
  * "the gate is too strict" without the rejected drafts and their reasons.
+ *
+ * ── verdict and delivery are two different facts ────────────────────────────
+ * `verdict` is the *gate's* answer: did this clear the bar. `deliveredAt` is
+ * whether it then reached an inbox. They were briefly one column called 'sent',
+ * written at the moment the row was created — which meant every digest claimed
+ * to have been sent before anything had been. Keeping them apart is what makes
+ * "the gate approved it and Resend was down" a state the system can be in and
+ * report, rather than a lie it tells.
  */
 export const digests = pgTable(
 	'digests',
@@ -105,10 +113,19 @@ export const digests = pgTable(
 		body: text('body').notNull(),
 		/** Paper ids consulted, in the order the digest cites them. */
 		sources: jsonb('sources').$type<string[]>().notNull().default([]),
-		verdict: text('verdict').$type<'sent' | 'withheld' | 'failed'>().notNull(),
+		/** The gate's answer. 'passed' means worth sending, not that it was sent. */
+		verdict: text('verdict').$type<'passed' | 'withheld' | 'failed'>().notNull(),
 		/** Why the gate withheld it, in the gate's own words. */
 		reason: text('reason'),
+		/** Set only once a mail provider has accepted it. */
 		deliveredAt: timestamp('delivered_at', { withTimezone: true }),
+		/**
+		 * Why delivery did not happen. Null means either "not attempted" (no mail
+		 * configured, or the gate withheld it) or "it worked" — `deliveredAt`
+		 * separates those two, and between them there is no state the pair cannot
+		 * describe.
+		 */
+		deliveryError: text('delivery_error'),
 		createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow()
 	},
 	(table) => [index('digests_subscription_idx').on(table.subscriptionId, table.createdAt)]

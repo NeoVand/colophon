@@ -99,7 +99,7 @@ export async function recordDigest(input: {
 	title: string;
 	body: string;
 	sources: string[];
-	verdict: 'sent' | 'withheld' | 'failed';
+	verdict: 'passed' | 'withheld' | 'failed';
 	reason?: string;
 }): Promise<Digest> {
 	const [row] = await db
@@ -111,11 +111,31 @@ export async function recordDigest(input: {
 			body: input.body,
 			sources: input.sources,
 			verdict: input.verdict,
-			reason: input.reason ?? null,
-			deliveredAt: input.verdict === 'sent' ? new Date() : null
+			reason: input.reason ?? null
 		})
 		.returning();
 	return row;
+}
+
+/**
+ * It reached an inbox.
+ *
+ * Deliberately a second write rather than a field on `recordDigest`: the digest
+ * has to exist and be readable *before* delivery is attempted, so that a crash
+ * mid-send loses the email and not the work. Recording the row first and the
+ * delivery second is the only order where the failure mode is "you can still
+ * read it in the app".
+ */
+export async function markDelivered(id: string, at = new Date()): Promise<void> {
+	await db.update(digests).set({ deliveredAt: at, deliveryError: null }).where(eq(digests.id, id));
+}
+
+/** Delivery was attempted and refused. The digest itself is unaffected. */
+export async function markDeliveryFailed(id: string, error: string): Promise<void> {
+	await db
+		.update(digests)
+		.set({ deliveryError: error.slice(0, 500) })
+		.where(eq(digests.id, id));
 }
 
 export async function listDigests(limit = 50): Promise<Digest[]> {

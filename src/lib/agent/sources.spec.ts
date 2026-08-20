@@ -5,6 +5,7 @@ import {
 	NotReadYet,
 	canonicalId,
 	formatCitation,
+	formatReferences,
 	type Source
 } from './sources';
 
@@ -136,5 +137,95 @@ describe('formatCitation', () => {
 		expect(formatCitation({ ...attention, authors: ['Ada Lovelace'], year: undefined })).toBe(
 			'Lovelace, "Attention Is All You Need"'
 		);
+	});
+});
+
+describe('formatReferences', () => {
+	const spin: Source = {
+		id: '2608.14922',
+		title: 'SpIn-ViT',
+		authors: ['Jae Lee', 'Ada Kim'],
+		year: 2026,
+		url: 'https://arxiv.org/abs/2608.14922',
+		arxivId: '2608.14922',
+		depth: 'read',
+		via: 'fetch_paper'
+	};
+
+	it('writes a heading and one entry per source, with the URL', () => {
+		const text = formatReferences([attention, spin]);
+		expect(text).toContain('## References');
+		expect(text).toContain(
+			'- Vaswani et al. (2017), "Attention Is All You Need". https://arxiv.org/abs/1706.03762'
+		);
+		expect(text).toContain('https://arxiv.org/abs/2608.14922');
+	});
+
+	/**
+	 * The whole reason this function exists: the model's own attempt leaked the
+	 * registry's bookkeeping into the reader's email as "(read) via search_papers".
+	 */
+	it('never leaks retrieval bookkeeping into the reader-facing text', () => {
+		const text = formatReferences([attention, spin]);
+		expect(text).not.toMatch(/\bvia\b|search_papers|fetch_paper|\(read\)|\(listed\)/);
+	});
+
+	it('returns nothing at all for an empty list, rather than a lonely heading', () => {
+		expect(formatReferences([])).toBe('');
+	});
+});
+
+describe('what was cited, as distinct from what was read', () => {
+	const spin: Source = {
+		id: '2608.14922',
+		title: 'SpIn-ViT',
+		authors: ['Jae Lee', 'Ada Kim'],
+		year: 2026,
+		url: 'https://arxiv.org/abs/2608.14922',
+		arxivId: '2608.14922',
+		depth: 'listed',
+		via: 'search_papers'
+	};
+
+	it('records nothing until something is actually cited', () => {
+		const registry = new SourceRegistry();
+		registry.register(attention);
+		expect(registry.cited()).toEqual([]);
+	});
+
+	it('keeps citations in the order they were first made, without repeats', () => {
+		const registry = new SourceRegistry();
+		registry.register({ ...attention, depth: 'read' });
+		registry.register(spin);
+
+		registry.cite(spin.id);
+		registry.cite(attention.id);
+		registry.cite(spin.id);
+
+		expect(registry.cited().map((s) => s.id)).toEqual(['2608.14922', '1706.03762']);
+	});
+
+	/**
+	 * The bug this whole method exists for: a digest attributed a finding to a
+	 * paper it had only seen the abstract of — which `cite` permits — and the
+	 * reference list, built from `read()`, silently left that paper out.
+	 */
+	it('includes a paper cited from its abstract, which read() would have dropped', () => {
+		const registry = new SourceRegistry();
+		registry.register(spin);
+		registry.cite(spin.id, { require: 'listed' });
+
+		expect(registry.read()).toEqual([]);
+		expect(registry.cited().map((s) => s.id)).toEqual(['2608.14922']);
+		expect(formatReferences(registry.cited())).toContain('SpIn-ViT');
+	});
+
+	it('does not record a citation that was refused', () => {
+		const registry = new SourceRegistry();
+		registry.register(spin);
+
+		expect(() => registry.cite(spin.id, { require: 'read' })).toThrow(NotReadYet);
+		expect(() => registry.cite('9999.99999')).toThrow(UnknownSource);
+		expect(registry.cited()).toEqual([]);
 	});
 });

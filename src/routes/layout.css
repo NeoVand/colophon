@@ -1,3 +1,500 @@
 @import 'tailwindcss';
+
+/*
+	Fonts are **self-hosted**, not linked from a CDN.
+
+	This is not a performance preference. Colophon exists partly so its reader can
+	work from networks that filter things — a corporate proxy, a conference
+	wifi, a country. A stylesheet that reaches for fonts.googleapis.com turns a
+	blocked host into an app rendered in Times New Roman, and the failure is
+	silent. Everything the page needs ships with the page.
+*/
+@import '@fontsource-variable/inter';
+@import '@fontsource-variable/jetbrains-mono';
+@import '@fontsource-variable/source-serif-4';
+
 @plugin '@tailwindcss/forms';
 @plugin '@tailwindcss/typography';
+
+@custom-variant dark (&:is(.dark *));
+
+/* ── Surfaces ────────────────────────────────────────────────────────────
+   A near-neutral with a slight cool bias. Not a pure grey: a mid-grey with
+   zero chroma reads as a default rather than a decision, and this app is
+   almost entirely text on a ground, so the ground is most of the design. */
+:root {
+	--background: oklch(0.995 0.001 286);
+	--foreground: oklch(0.175 0.005 285.8);
+	--card: oklch(1 0 0);
+	--card-foreground: var(--foreground);
+	--popover: oklch(1 0 0);
+	--popover-foreground: var(--foreground);
+	--muted: oklch(0.965 0.002 286);
+	--muted-foreground: oklch(0.545 0.014 286);
+	--border: oklch(0.895 0.004 286);
+	--radius: 0.4rem;
+}
+
+/* ── The legend ──────────────────────────────────────────────────────────
+   Nine colours, each meaning one subsystem, used identically everywhere — the
+   event row, the lane, the readout, the chip. A colour that means "a tool ran"
+   in one panel and "a warning" in another is not a legend, it is decoration.
+
+   Colophon's subsystems are not harnessXray's, so this is an adaptation rather
+   than a copy. There is no plan and no virtual filesystem here; there is a
+   *library* of papers with a depth, a *gate* that refuses to send, and a
+   subagent that reads. Those get the colours the absent ones would have had.
+
+   Chroma stays ≤0.13 so nothing competes with the text it sits beside. */
+:root {
+	--co-user: oklch(0.52 0.09 330); /* plum — you speaking */
+	--co-model: oklch(0.5 0.062 195); /* phosphor teal — the model speaking */
+	--co-tool: oklch(0.56 0.085 72); /* ochre — retrieval happening */
+	--co-library: oklch(0.52 0.06 145); /* sage — papers, and how well they are known */
+	--co-memory: oklch(0.54 0.055 25); /* dusty clay — what survives the thread */
+	--co-subagent: oklch(0.53 0.05 220); /* the reader, in its own window */
+	--co-approval: oklch(0.62 0.11 62); /* warm amber — the run is waiting on you */
+	/*
+		The gate gets its own colour, and that is a claim about the product.
+
+		Withholding is not an error and not a warning: it is the delivery gate
+		doing the single most valuable thing it does. Colouring a withheld digest
+		red would teach the reader that quiet mornings are failures, which is
+		exactly backwards. Violet is adjacent to nothing else in this legend, so a
+		gate verdict is never mistaken for anything.
+	*/
+	--co-gate: oklch(0.5 0.08 300);
+	--co-error: oklch(0.53 0.15 27);
+
+	/* Your turn, as a surface — derived from --co-user so the bubble, the event
+	   row and the legend chip can never drift apart. Mixed into the *page*
+	   rather than into --muted: muted is grey, and washing plum through grey
+	   gives a grey box with a rumour of colour. */
+	--co-you-wash: color-mix(in oklab, var(--co-user) 8%, var(--background));
+	--co-you-edge: color-mix(in oklab, var(--co-user) 20%, transparent);
+
+	/* The app's own voice: wordmark, focus ring, active tab. One per theme. */
+	--co-accent: oklch(0.48 0.08 265);
+	--co-accent-soft: color-mix(in oklab, var(--co-accent) 35%, transparent);
+
+	/* Real horizontal space, reserved by every scroller for its scrollbar.
+	   Named because anything that wants equal-looking insets inside a scroller
+	   has to pay this back on the right, and should not repeat the number. */
+	--co-gutter: 10px;
+
+	/* Literal alpha, not a color-mix of --foreground: Tailwind rewrites
+	   color-mix into an @supports block whose *fallback* is the bare colour,
+	   which for a scrollbar means a solid black bar on any engine taking that
+	   path. Stating the alpha cannot degrade. */
+	--co-scroll: oklch(0.175 0.005 285.8 / 0.14);
+	--co-scroll-hover: oklch(0.175 0.005 285.8 / 0.28);
+	--co-scroll-active: oklch(0.175 0.005 285.8 / 0.4);
+
+	/* Unlike the scrollbar, a color-mix fallback here is the bare accent — a
+	   full-strength ring, loud but never invisible — so following the theme is
+	   worth the indirection. */
+	--co-focus: color-mix(in oklab, var(--co-accent) 55%, transparent);
+
+	/* Token kinds — the only *quantitative* family, and therefore separate from
+	   the legend above.
+
+	   The legend is built for the opposite job: nine kinds at one lightness so a
+	   list reads calm. Put those same swatches side by side in a stacked bar and
+	   neighbouring hues collapse. Here lightness carries the *rate* — the dearer
+	   the token, the stronger the colour — so the ramp still reads in order if
+	   hue is lost entirely, and blue/amber is the backbone because that pair
+	   survives the common colour-vision deficiencies. */
+	--co-tok-new: oklch(0.56 0.065 255);
+	--co-tok-cached: oklch(0.73 0.035 255);
+	--co-tok-out: oklch(0.5 0.085 70);
+	--co-tok-reason: oklch(0.71 0.045 70);
+	--co-tok-image: oklch(0.52 0.09 330);
+}
+
+/* ── Dark ────────────────────────────────────────────────────────────────
+   Lifted off pure black and pulled back from pure white. Near-white on
+   near-black is glare in something you read for an hour, and reading for an
+   hour is the entire point of this application. */
+.dark {
+	--background: oklch(0.178 0.004 285.8);
+	--foreground: oklch(0.9 0.002 286);
+	--card: oklch(0.215 0.005 285.9);
+	--card-foreground: var(--foreground);
+	--popover: oklch(0.215 0.005 285.9);
+	--popover-foreground: var(--foreground);
+	--muted: oklch(0.263 0.005 286);
+	--muted-foreground: oklch(0.655 0.012 286);
+	--border: oklch(1 0 0 / 9%);
+
+	--co-user: oklch(0.73 0.09 330);
+	--co-model: oklch(0.72 0.075 195);
+	--co-tool: oklch(0.75 0.085 72);
+	--co-library: oklch(0.71 0.07 145);
+	--co-memory: oklch(0.71 0.065 25);
+	--co-subagent: oklch(0.71 0.055 220);
+	--co-approval: oklch(0.78 0.1 62);
+	--co-gate: oklch(0.72 0.08 300);
+	--co-error: oklch(0.68 0.14 27);
+
+	/* On a dark ground the wash *lifts* the surface, and a lift reads weaker
+	   than a shadow at the same percentage — so both come up a notch to land at
+	   the same apparent strength. */
+	--co-you-wash: color-mix(in oklab, var(--co-user) 11%, var(--background));
+	--co-you-edge: color-mix(in oklab, var(--co-user) 26%, transparent);
+
+	--co-accent: oklch(0.74 0.085 200);
+
+	/* Lighter *and* fainter: a pale thumb carries further than a dark one, so
+	   the light scheme's alpha would read as brighter here. */
+	--co-scroll: oklch(1 0 0 / 0.11);
+	--co-scroll-hover: oklch(1 0 0 / 0.22);
+	--co-scroll-active: oklch(1 0 0 / 0.32);
+	--co-focus: color-mix(in oklab, var(--co-accent) 60%, transparent);
+
+	/* Inverted: on a dark page, strongest means lightest. Hues, the
+	   rate-carries-lightness rule and the chroma ceiling are unchanged. */
+	--co-tok-new: oklch(0.7 0.06 255);
+	--co-tok-cached: oklch(0.54 0.035 255);
+	--co-tok-out: oklch(0.82 0.08 75);
+	--co-tok-reason: oklch(0.63 0.045 75);
+	--co-tok-image: oklch(0.75 0.09 330);
+}
+
+/* ── Themes ──────────────────────────────────────────────────────────────
+   A theme is a temperature, and everything answers to it. The legend stays a
+   legend: the ochre *family* always means retrieval, the sage family always
+   means the library. What a theme retunes is the weather those families sit
+   in, so the app changes character without the reader having to relearn it.
+
+   `.dark` carries scheme-level behaviour; `[data-theme]` carries the tint.
+   Both are set together. Midnight is the bare `.dark` and gets no block. */
+
+/* Paper — the reading theme, and the default. Warm, low-contrast, the colour
+   of a good journal rather than of a screen. Bibliographies and long digests
+   are what this app is for, and they are read here. */
+:root[data-theme='paper'] {
+	--background: oklch(0.978 0.008 85);
+	--foreground: oklch(0.235 0.014 65);
+	--card: oklch(0.992 0.005 85);
+	--popover: oklch(0.992 0.005 85);
+	--muted: oklch(0.952 0.01 85);
+	--muted-foreground: oklch(0.505 0.018 70);
+	--border: oklch(0.4 0.02 70 / 15%);
+	--co-accent: oklch(0.46 0.1 40); /* iron-gall ink, gone slightly red with age */
+
+	/* Warmed a few degrees each, so the legend sits in the same light as the
+	   page instead of on top of it. */
+	--co-user: oklch(0.5 0.09 340);
+	--co-model: oklch(0.48 0.06 200);
+	--co-tool: oklch(0.53 0.09 68);
+	--co-library: oklch(0.49 0.06 140);
+	--co-memory: oklch(0.51 0.06 30);
+	--co-subagent: oklch(0.5 0.05 225);
+	--co-approval: oklch(0.58 0.11 58);
+	--co-gate: oklch(0.48 0.08 305);
+	--co-error: oklch(0.5 0.15 27);
+}
+
+/* Slate — cool, dim, for working at night without the app being a lamp. */
+:root[data-theme='slate'] {
+	--background: oklch(0.192 0.014 245);
+	--foreground: oklch(0.898 0.007 240);
+	--card: oklch(0.228 0.016 245);
+	--popover: oklch(0.228 0.016 245);
+	--muted: oklch(0.272 0.018 245);
+	--muted-foreground: oklch(0.662 0.017 240);
+	--border: oklch(0.82 0.05 240 / 11%);
+	--co-accent: oklch(0.72 0.08 235);
+
+	--co-user: oklch(0.73 0.08 320);
+	--co-model: oklch(0.73 0.08 210);
+	--co-tool: oklch(0.74 0.07 78);
+	--co-library: oklch(0.71 0.06 155);
+	--co-memory: oklch(0.7 0.05 20);
+	--co-subagent: oklch(0.72 0.06 232);
+	--co-approval: oklch(0.78 0.09 68);
+	--co-gate: oklch(0.72 0.075 302);
+	--co-error: oklch(0.68 0.13 18);
+}
+
+/* ── Tailwind bindings ───────────────────────────────────────────────────
+   Only what a utility class needs to reach. The --co-* legend is deliberately
+   *not* exposed as Tailwind colours: those belong in CSS, next to the
+   reasoning, not sprinkled through markup as `text-co-tool`. */
+@theme inline {
+	--font-sans: 'Inter Variable', ui-sans-serif, system-ui, sans-serif;
+	--font-mono: 'JetBrains Mono Variable', ui-monospace, SFMono-Regular, Menlo, monospace;
+	/*
+		The reading face, and the one place Colophon parts company with
+		harnessXray's typography.
+
+		harnessXray displays a conversation; Colophon displays *documents you sit
+		down with* — a digest, a review, a paper's notes. Source Serif 4 is drawn
+		for continuous reading on a screen at text sizes, which is precisely the
+		job, and the sans stays for chrome so the two never argue.
+	*/
+	--font-serif: 'Source Serif 4 Variable', 'Iowan Old Style', Georgia, serif;
+
+	--color-background: var(--background);
+	--color-foreground: var(--foreground);
+	--color-card: var(--card);
+	--color-card-foreground: var(--card-foreground);
+	--color-popover: var(--popover);
+	--color-popover-foreground: var(--popover-foreground);
+	--color-muted: var(--muted);
+	--color-muted-foreground: var(--muted-foreground);
+	--color-border: var(--border);
+
+	--radius-sm: calc(var(--radius) * 0.6);
+	--radius-md: calc(var(--radius) * 0.8);
+	--radius-lg: var(--radius);
+	--radius-xl: calc(var(--radius) * 1.4);
+}
+
+@layer base {
+	* {
+		border-color: var(--border);
+	}
+	html {
+		font-family: var(--font-sans);
+		background: var(--background);
+		color: var(--foreground);
+	}
+
+	/* The workhorse of the whole visual system: an uppercase mono micro-label.
+	   It lets a panel be titled without a card, a border or a heading weight,
+	   which is how this app has structure without having furniture. */
+	.co-eyebrow {
+		font-family: var(--font-mono);
+		font-size: 0.625rem;
+		font-weight: 500;
+		letter-spacing: 0.09em;
+		text-transform: uppercase;
+		color: var(--muted-foreground);
+	}
+
+	/* Any number the eye has to compare down a column. */
+	.co-num {
+		font-family: var(--font-mono);
+		font-variant-numeric: tabular-nums;
+	}
+
+	/* The wordmark. Mono rather than the UI sans, because the visual language
+	   is instrument-panel — the name should look like it belongs to the
+	   readouts rather than to a marketing page. */
+	.co-wordmark {
+		font-family: var(--font-mono);
+		font-weight: 600;
+		letter-spacing: -0.03em;
+	}
+	.co-wordmark em {
+		font-style: normal;
+		font-weight: 400;
+		color: var(--co-accent);
+	}
+
+	/* Hairline: half-strength border. Panels separate by *edge*, not by box. */
+	.co-rule {
+		border-color: color-mix(in oklab, var(--border) 60%, transparent);
+	}
+
+	/* Frosted chrome. A panel header sits *over* its scroll area rather than
+	   above it, so content passes underneath and the header reads as a layer.
+	   The blur is what makes that legible — opaque would merely clip, and plain
+	   translucent would let text collide with text. Saturation is nudged up
+	   because blurring desaturates whatever is behind it. */
+	.co-frost {
+		background: color-mix(in oklab, var(--background) 72%, transparent);
+		backdrop-filter: blur(12px) saturate(1.4);
+		-webkit-backdrop-filter: blur(12px) saturate(1.4);
+	}
+	/* Where the backdrop cannot be blurred, fall back to opaque rather than to
+	   unreadable — a header you can see through onto text is worse than a flat one. */
+	@supports not (backdrop-filter: blur(1px)) {
+		.co-frost {
+			background: var(--background);
+		}
+	}
+
+	/* A document, set to be read. Used for digests, reviews and paper notes —
+	   anything whose job is to be sat down with rather than scanned. */
+	.co-prose {
+		font-family: var(--font-serif);
+		font-size: 1.0625rem;
+		line-height: 1.65;
+		/* ~65 characters, the measure that stops a line needing to be found again
+		   at the start of the next one. */
+		max-width: 34em;
+		text-wrap: pretty;
+	}
+	.co-prose h1,
+	.co-prose h2,
+	.co-prose h3 {
+		text-wrap: balance;
+		font-weight: 600;
+		letter-spacing: -0.01em;
+	}
+	.co-prose h1 {
+		font-size: 1.5rem;
+		line-height: 1.25;
+		margin: 0 0 0.75rem;
+	}
+	.co-prose h2 {
+		font-size: 1.125rem;
+		margin: 1.75rem 0 0.5rem;
+	}
+	.co-prose h3 {
+		font-size: 1rem;
+		margin: 1.25rem 0 0.4rem;
+	}
+	.co-prose p,
+	.co-prose ul,
+	.co-prose ol,
+	.co-prose blockquote,
+	.co-prose pre {
+		margin: 0 0 0.85rem;
+	}
+	.co-prose ul,
+	.co-prose ol {
+		padding-left: 1.35rem;
+	}
+	.co-prose li {
+		margin-bottom: 0.3rem;
+	}
+	.co-prose li::marker {
+		color: var(--muted-foreground);
+	}
+	.co-prose a {
+		color: inherit;
+		text-decoration: underline;
+		text-decoration-color: color-mix(in oklab, var(--co-accent) 45%, transparent);
+		text-underline-offset: 2px;
+	}
+	.co-prose a:hover {
+		text-decoration-color: var(--co-accent);
+	}
+	.co-prose code {
+		font-family: var(--font-mono);
+		font-size: 0.85em;
+		background: var(--muted);
+		padding: 0.05em 0.3em;
+		border-radius: 3px;
+	}
+	.co-prose pre {
+		font-family: var(--font-mono);
+		font-size: 0.8125rem;
+		background: var(--muted);
+		padding: 0.7rem 0.85rem;
+		border-radius: var(--radius-sm);
+		overflow-x: auto;
+	}
+	.co-prose pre code {
+		background: none;
+		padding: 0;
+	}
+	.co-prose blockquote {
+		padding-left: 0.9rem;
+		border-left: 2px solid color-mix(in oklab, var(--border) 140%, transparent);
+		color: var(--muted-foreground);
+	}
+	.co-prose hr {
+		margin: 1.5rem 0;
+		border: 0;
+		border-top: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+	}
+}
+
+/* ── Scrollbars ──────────────────────────────────────────────────────────
+   Several panels means several scrollbars, and at the OS default they read as
+   structure — grey channels dividing the layout as loudly as the rules that
+   are meant to. So: no track, and a thumb that is a tint of the foreground
+   inset by a transparent border, so it floats in the gutter instead of
+   filling it.
+
+   The hover rule is the point. Left unstyled, Chromium swaps in its own
+   heavier thumb the moment the pointer enters the scrollable area — the
+   jarring default this exists to prevent. Ours only warms. */
+::-webkit-scrollbar {
+	width: var(--co-gutter);
+	height: var(--co-gutter);
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+	background: transparent;
+}
+/* Transparent at rest, inked only while the pointer is over the scrollable
+   element — so several panels do not show several permanent grey bars. The
+   *gutter* is reserved at all times (the width is on ::-webkit-scrollbar, not
+   on the thumb), so nothing reflows when it appears. */
+::-webkit-scrollbar-thumb {
+	background-color: transparent;
+	border: 3px solid transparent;
+	/* Clip to the content box so the transparent border becomes padding — this
+	   is what makes a 10px gutter hold a 4px thumb. */
+	background-clip: content-box;
+	border-radius: 999px;
+}
+:hover::-webkit-scrollbar-thumb {
+	background-color: var(--co-scroll);
+}
+:hover::-webkit-scrollbar-thumb:hover {
+	background-color: var(--co-scroll-hover);
+}
+:hover::-webkit-scrollbar-thumb:active {
+	background-color: var(--co-scroll-active);
+}
+
+/* Firefox has no pseudo-elements for this, only the two standard properties.
+   Scoped to where the pseudo-elements are unsupported because Chromium honours
+   `scrollbar-color` *instead of* `::-webkit-scrollbar` when both are set —
+   declaring it globally would silently discard everything above. */
+@supports not selector(::-webkit-scrollbar) {
+	* {
+		scrollbar-width: thin;
+		scrollbar-color: var(--co-scroll-hover) transparent;
+	}
+}
+
+/* ── Focus ───────────────────────────────────────────────────────────────
+   Deliberately **unlayered**.
+
+   Cascade layers beat specificity, so a rule inside `@layer base` loses to
+   anything in a later layer however specific it is — and both Tailwind's
+   utilities and the forms plugin's `textarea:focus { outline: 2px solid
+   transparent }` sit later. Unlayered CSS outranks every layer, which is the
+   only reliable way to own this from one place.
+
+   The browser default is a high-contrast ring in the OS accent colour — blue
+   on most machines — the one colour this palette does not contain. */
+:focus-visible {
+	outline: 2px solid var(--co-focus);
+	outline-offset: 1px;
+}
+
+/* Boxed fields opt in. `outline-none` on a bordered input leaves keyboard
+   users with no indicator at all, which is worse than the default it was added
+   to suppress; this gives one in our own ink and tints the border with it, so
+   the whole box answers rather than just its halo. */
+.co-field:focus-visible,
+.co-field:focus {
+	outline: 2px solid var(--co-focus);
+	outline-offset: 0;
+	border-color: var(--co-focus);
+}
+
+/* And chromeless ones opt *out*. The composer is a bare line of text on the
+   page, not a box — ringing it draws an outline around nothing, and it is
+   focused nearly all the time, so the ring would be permanent furniture. */
+.co-bare:focus,
+.co-bare:focus-visible {
+	outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+	*,
+	*::before,
+	*::after {
+		animation-duration: 0.01ms !important;
+		transition-duration: 0.01ms !important;
+	}
+}

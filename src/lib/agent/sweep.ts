@@ -2,15 +2,19 @@ import { Agent } from '@mastra/core/agent';
 import { model } from '$lib/server/model';
 import { agentMemory, isStorageConfigured, READER } from '$lib/server/storage';
 import { createResearchTools } from './tools';
+import { formatReferences } from './sources';
 import { deliveryGate } from './delivery-gate';
 import {
 	dueSubscriptions,
+	markDelivered,
+	markDeliveryFailed,
 	markSwept,
 	recordDigest,
 	rememberPaper,
 	sweepSince,
 	type Subscription
 } from '$lib/server/subscriptions';
+import { isMailConfigured, sendDigest } from '$lib/server/mail';
 
 /**
  * The sweep: what Colophon does while you are asleep.
@@ -31,10 +35,15 @@ import {
 export interface SweepResult {
 	subscriptionId: string;
 	query: string;
-	verdict: 'sent' | 'withheld' | 'failed';
+	/** The gate's answer. 'passed' is not the same as delivered — see `delivered`. */
+	verdict: 'passed' | 'withheld' | 'failed';
 	title: string;
 	reason?: string;
 	sources: string[];
+	/** True only once a mail provider has accepted it. */
+	delivered: boolean;
+	/** Why it did not arrive, when the gate had said it should. */
+	deliveryError?: string;
 	ms: number;
 }
 
@@ -47,17 +56,37 @@ Only papers published on or after ${day}.
 ${subscription.notes ? `Why this is being followed, in the reader's words:\n"${subscription.notes}"\n\nLet that decide what is worth mentioning and what is not.` : ''}
 
 Search by recency. Read the two or three papers that actually matter — not
-every result. Then write a short digest:
+every result. Verify each claim through the cite tool as you write it.
 
-- Open with the single most consequential thing, or say plainly that nothing
-  this period changes anything.
-- Cite everything through the cite tool.
-- End with the bibliography tool.
+## The shape of the digest
 
-Title the digest on its first line as a markdown heading.
+First line: a markdown H1 that is a **headline about what happened** — the
+finding, the disagreement, the thing that changed. Not the search query, not a
+date range, not "Weekly digest". A reader scanning their inbox sees only this.
+
+Then prose. Short paragraphs, each making one point, opening with the sentence
+that carries the news. Attribute in running text — (Lee et al., 2026) — the way
+a person writing to a colleague would.
+
+Use a bulleted list only for genuinely parallel items, at most four, one
+sentence each. A single bullet containing a paragraph is a paragraph; write it
+as one.
+
+Do **not** write a references or bibliography section, and do not call the
+bibliography tool. References are appended for you, built from the papers you
+actually opened. Never copy retrieval bookkeeping into the prose — words like
+"read", "listed", "via search_papers" are the system talking to itself, and the
+reader should never meet them.
 
 If the period genuinely contained nothing worth the reader's attention, say so
 in a sentence and stop. Padding a thin week is worse than silence.`;
+}
+
+/** Everything the research tool set offers except the bibliography. */
+function withoutBibliography<T extends Record<string, unknown>>(tools: T): Omit<T, 'bibliography'> {
+	const { bibliography: _unused, ...rest } = tools;
+	void _unused;
+	return rest;
 }
 
 /** The heading on the first line, or a fallback. */
@@ -97,7 +126,13 @@ export async function sweepOne(subscription: Subscription): Promise<SweepResult>
 follows this field closely and has very little time. Be specific, be short, and
 be willing to report that nothing happened.`,
 		model: model(),
-		tools: research.tools,
+		// `bibliography` is deliberately withheld from a sweep. The references are
+		// appended by the system afterwards, so a tool that produces a second,
+		// differently-formatted list has nothing to contribute and one obvious way
+		// to do harm. Telling the model not to call a tool it has is advice; not
+		// giving it the tool is the same guarantee the `cite` refusal makes.
+		// The interactive agent keeps it — there, the reader can ask for one.
+		tools: withoutBibliography(research.tools),
 		outputProcessors: [gate],
 		...(isStorageConfigured() ? { memory: agentMemory() } : {})
 	});
@@ -138,17 +173,36 @@ be willing to report that nothing happened.`,
 		});
 	}
 
-	const sources = research.registry.read().map((s) => s.id);
+	// Three different questions, three different answers, and conflating any two
+	// of them produces a wrong document:
+	//   cited — what the digest refers to, and therefore its reference list
+	//   read  — what was opened in full, and therefore the honest "N papers read"
+	//   all   — everything retrieved, which goes to the library either way
+	const cited = research.registry.cited();
+	const read = research.registry.read();
+	const sources = cited.map((s) => s.id);
+
+	// The references are appended here rather than asked for, so the document is
+	// complete in the database and identical everywhere it is rendered. Only on a
+	// digest that will actually be read: a withheld or failed run keeps its raw
+	// draft, which is what makes a rejected draft useful for tuning the gate.
+	const references = formatReferences(cited);
 	const outcome: SweepResult['verdict'] = failure
 		? 'failed'
 		: verdict && !verdict.worthSending
 			? 'withheld'
-			: 'sent';
+			: 'passed';
+	const title = titleOf(body, subscription);
 
-	await recordDigest({
+	const document =
+		outcome === 'passed' && references && !/^##\s+references/im.test(body)
+			? `${body.trimEnd()}\n\n${references}\n`
+			: body;
+
+	const digest = await recordDigest({
 		subscriptionId: subscription.id,
-		title: titleOf(body, subscription),
-		body,
+		title,
+		body: document,
 		sources,
 		verdict: outcome,
 		reason: failure ?? verdict?.reason
@@ -159,13 +213,49 @@ be willing to report that nothing happened.`,
 	// the same verdict. A failure does not advance it, so the next run retries.
 	if (!failure) await markSwept(subscription.id);
 
+	/*
+	 * Delivery, after the digest is safely on disk.
+	 *
+	 * Three things worth being deliberate about:
+	 *
+	 * 1. It happens *after* `recordDigest`, so a provider outage costs the email
+	 *    and never the writing. The digest is readable in the app either way.
+	 * 2. A delivery failure does **not** make the sweep a failure. The research
+	 *    happened, the gate approved, the text exists; calling that "failed"
+	 *    would un-advance `lastSweptAt` and re-read the whole period tomorrow to
+	 *    produce a digest that already exists.
+	 * 3. With no mail configured it simply does not run. `deliveredAt` stays
+	 *    null with no `deliveryError` beside it, which is the pair's way of
+	 *    saying "never attempted" as distinct from "attempted and refused".
+	 */
+	let delivered = false;
+	let deliveryError: string | undefined;
+
+	if (outcome === 'passed' && isMailConfigured()) {
+		try {
+			await sendDigest({
+				topic: subscription.query,
+				subject: title,
+				markdown: document,
+				papersRead: read.length
+			});
+			await markDelivered(digest.id);
+			delivered = true;
+		} catch (error) {
+			deliveryError = error instanceof Error ? error.message : String(error);
+			await markDeliveryFailed(digest.id, deliveryError);
+		}
+	}
+
 	return {
 		subscriptionId: subscription.id,
 		query: subscription.query,
 		verdict: outcome,
-		title: titleOf(body, subscription),
+		title,
 		reason: failure ?? verdict?.reason,
 		sources,
+		delivered,
+		deliveryError,
 		ms: Date.now() - startedAt
 	};
 }

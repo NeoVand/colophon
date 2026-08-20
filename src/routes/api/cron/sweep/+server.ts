@@ -41,12 +41,15 @@ export const POST: RequestHandler = async ({ request }) => {
 	return json({
 		swept: results.length,
 		ms: Date.now() - startedAt,
+		delivered: results.filter((r) => r.delivered).length,
 		results: results.map((r) => ({
 			query: r.query,
 			verdict: r.verdict,
 			title: r.title,
 			reason: r.reason,
 			papersRead: r.sources.length,
+			delivered: r.delivered,
+			deliveryError: r.deliveryError,
 			ms: r.ms
 		}))
 	});
