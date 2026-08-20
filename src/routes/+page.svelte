@@ -19,6 +19,8 @@
 
 	import WorkflowPanel from '$lib/components/xray/WorkflowPanel.svelte';
 	import EventTimeline from '$lib/components/xray/EventTimeline.svelte';
+	import Inspector from '$lib/components/xray/Inspector.svelte';
+	import Sheet from '$lib/components/ui/Sheet.svelte';
 	import ContextPanel from '$lib/components/xray/ContextPanel.svelte';
 	import LibraryPanel from '$lib/components/xray/LibraryPanel.svelte';
 	import FiguresPanel from '$lib/components/xray/FiguresPanel.svelte';
@@ -72,6 +74,26 @@
 
 	/** Which tab each grouped panel is showing. */
 	let artefacts = $state('library');
+
+	/**
+	 * The event the inspector is open on, by `seq`.
+	 *
+	 * `Inspector` was written, finished and mounted nowhere, and the timeline had
+	 * no selection at all — so the one thing an X-ray is *for*, getting behind a
+	 * summary to the object it summarises, could not be done here at all. Every
+	 * row in that list is a sentence somebody wrote; this is how you check it.
+	 *
+	 * Held by `seq` rather than by the event object, so the panel keeps following
+	 * the live log: the same event re-derived on the next frame is still the one
+	 * that is open.
+	 */
+	let inspecting = $state<number | undefined>();
+	const inspected = $derived(session.events.find((e) => e.seq === inspecting));
+	/** `Sheet` binds `open`; this keeps the two representations in step. */
+	let inspectorOpen = $state(false);
+	$effect(() => {
+		if (!inspectorOpen) inspecting = undefined;
+	});
 	let machine = $state('graph');
 
 	onMount(() => {
@@ -120,7 +142,13 @@
 								</Pane>
 								<Divider direction="vertical" />
 								<Pane defaultSize={42} minSize={16}>
-									<EventTimeline />
+									<EventTimeline
+										selected={inspecting}
+										onselect={(seq) => {
+											inspecting = seq;
+											inspectorOpen = true;
+										}}
+									/>
 								</Pane>
 								<Divider direction="vertical" />
 								<Pane defaultSize={32} minSize={12} collapsible collapsedSize={6}>
@@ -232,6 +260,18 @@
 />
 
 <AboutSheet bind:open={aboutOpen} />
+
+<!--
+	The inspector, in a sheet rather than a fourth pane.
+
+	A pane is the harnessXray answer and it needs room this layout has already
+	spent: three columns are full, and a fourth would put the transcript under
+	forty characters. A sheet costs one keystroke to dismiss and can be as wide
+	as the frame it is reading, which is what a raw request body needs.
+-->
+<Sheet bind:open={inspectorOpen} side="right" title="Event">
+	<Inspector event={inspected} onclose={() => (inspectorOpen = false)} />
+</Sheet>
 
 <style>
 	.app {

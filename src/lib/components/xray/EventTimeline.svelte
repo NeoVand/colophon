@@ -41,8 +41,30 @@
 	 */
 	let filter = $state('tools');
 
+	let {
+		/** A row was clicked; the page opens the inspector on that event. */
+		onselect,
+		/** The `seq` currently open, so the row can show it is the one. */
+		selected
+	}: { onselect?: (seq: number) => void; selected?: number } = $props();
+
 	interface Row {
 		key: string;
+		/**
+		 * The `LoggedEvent.seq` this row is a summary of, when it is a summary of
+		 * exactly one.
+		 *
+		 * This is what makes a row openable. Every label in this list —
+		 * `search_papers`, `3.4s`, `12 results` — is a sentence somebody wrote,
+		 * and the whole promise of an X-ray is that you can get behind the
+		 * sentence to the object. `Inspector` has always been able to show that
+		 * object; there was simply no way to say *which* one, so it was mounted
+		 * nowhere and the timeline was a list of claims you had to take on faith.
+		 *
+		 * Absent on the folded text row, which stands for a run of many events and
+		 * so has no single one to open.
+		 */
+		seq?: number;
 		at: number;
 		kind: string;
 		label: string;
@@ -85,6 +107,7 @@
 				case 'start':
 					rows.push({
 						key: `s${seq}`,
+						seq,
 						at,
 						kind: 'start',
 						label: 'run started',
@@ -95,6 +118,7 @@
 					if (event.state === 'start') {
 						rows.push({
 							key: `r${seq}`,
+							seq,
 							at,
 							kind: 'reasoning',
 							label: 'reasoning',
@@ -105,6 +129,7 @@
 				case 'tool-call':
 					rows.push({
 						key: `tc${seq}`,
+						seq,
 						at,
 						kind: 'tool-call',
 						label: event.subagent ?? event.name,
@@ -118,6 +143,7 @@
 				case 'tool-result':
 					rows.push({
 						key: `tr${seq}`,
+						seq,
 						at,
 						kind: event.failed ? 'tool-error' : 'tool-result',
 						label: event.name ? (subagentOf(event.name) ?? event.name) : 'result',
@@ -131,6 +157,7 @@
 				case 'step':
 					rows.push({
 						key: `st${seq}`,
+						seq,
 						at,
 						kind: 'step',
 						label: 'step',
@@ -141,6 +168,7 @@
 				case 'approval':
 					rows.push({
 						key: `a${seq}`,
+						seq,
 						at,
 						kind: 'approval',
 						label: `approval · ${event.name}`,
@@ -151,6 +179,7 @@
 				case 'tripwire':
 					rows.push({
 						key: `tw${seq}`,
+						seq,
 						at,
 						kind: 'tripwire',
 						label: 'gate',
@@ -161,6 +190,7 @@
 				case 'done':
 					rows.push({
 						key: `d${seq}`,
+						seq,
 						at,
 						kind: 'done',
 						label: 'finished',
@@ -171,6 +201,7 @@
 				case 'error':
 					rows.push({
 						key: `e${seq}`,
+						seq,
 						at,
 						kind: 'error',
 						label: 'error',
@@ -331,7 +362,24 @@
 	{:else}
 		<div bind:this={scroller} class="rows">
 			{#each rows as row (row.key)}
-				<div class="row" class:laned={Boolean(row.lane)} style:--tone="var({row.tone})">
+				<!--
+					A button, not a div, and only when there is something to open.
+
+					The folded text row summarises many events and has no single one
+					behind it, so it stays inert rather than opening an arbitrary
+					member of the run it stands for.
+				-->
+				<svelte:element
+					this={row.seq === undefined ? 'div' : 'button'}
+					role={row.seq === undefined ? undefined : 'button'}
+					type={row.seq === undefined ? undefined : 'button'}
+					class="row"
+					class:laned={Boolean(row.lane)}
+					class:openable={row.seq !== undefined}
+					class:on={row.seq !== undefined && row.seq === selected}
+					style:--tone="var({row.tone})"
+					onclick={row.seq === undefined ? undefined : () => onselect?.(row.seq!)}
+				>
 					<span class="co-num t">{(row.at / 1000).toFixed(1)}</span>
 					<!-- A tool call gets its own glyph and everything else gets the tick.
 					     Both occupy the same 11px column, so the rows still line up and
@@ -345,7 +393,7 @@
 					{/if}
 					<span class="label" title={row.hint}>{row.label}</span>
 					{#if row.detail}<span class="detail">{row.detail}</span>{/if}
-				</div>
+				</svelte:element>
 			{/each}
 		</div>
 	{/if}
@@ -366,6 +414,31 @@
 		align-items: baseline;
 		gap: 0.45rem;
 		white-space: nowrap;
+		/* Reset, because half of these are buttons now. A row must look identical
+		   whether or not it happens to be openable — the affordance is the hover,
+		   not a permanent change of weight. */
+		width: 100%;
+		border: 0;
+		padding: 0;
+		background: transparent;
+		font: inherit;
+		color: inherit;
+		text-align: left;
+	}
+
+	.row.openable {
+		cursor: pointer;
+		border-radius: 2px;
+	}
+	.row.openable:hover {
+		background: color-mix(in oklab, var(--tone) 10%, transparent);
+	}
+	.row.on {
+		background: color-mix(in oklab, var(--tone) 16%, transparent);
+	}
+	.row.openable:focus-visible {
+		outline: 1px solid color-mix(in oklab, var(--tone) 60%, transparent);
+		outline-offset: -1px;
 	}
 
 	/* The lane. An indent and a rule, so a delegation reads as a nested run
