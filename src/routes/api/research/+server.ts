@@ -90,17 +90,37 @@ export const POST: RequestHandler = async ({ request }) => {
 	 * request.
 	 */
 	let open = true;
+	/** Silences the heartbeat from `cancel`, which runs while `start` is stuck. */
+	let silence = () => {};
 
 	const stream = new ReadableStream<Uint8Array>({
 		async start(controller) {
-			const send = (event: string, data: unknown) => {
+			/*
+			 * The flag is the fast path; the `catch` is the truth.
+			 *
+			 * Flipping `open` in `cancel` is not enough on its own, and the sibling
+			 * route proved it the expensive way — see the long note in
+			 * `api/agent/stream/+server.ts`. A timer can fire in the window between
+			 * the reader disconnecting and `cancel` being invoked, and an
+			 * `enqueue` that throws inside a timer callback has no `try` above it
+			 * and no promise to reject: Node kills the process. A stream nobody is
+			 * reading is not worth an exception.
+			 */
+			const write = (frame: string) => {
 				if (!open) return;
-				controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+				try {
+					controller.enqueue(encoder.encode(frame));
+				} catch {
+					open = false;
+				}
 			};
 
-			const heartbeat = setInterval(() => {
-				if (open) controller.enqueue(encoder.encode(': keep-alive\n\n'));
-			}, HEARTBEAT_MS);
+			const send = (event: string, data: unknown) => {
+				write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+			};
+
+			const heartbeat = setInterval(() => write(': keep-alive\n\n'), HEARTBEAT_MS);
+			silence = () => clearInterval(heartbeat);
 
 			try {
 				/*
@@ -152,15 +172,26 @@ export const POST: RequestHandler = async ({ request }) => {
 				const wasOpen = open;
 				open = false;
 				cancelRun = undefined;
-				clearInterval(heartbeat);
+				silence();
 				// Only if the reader has not already torn the stream down; closing a
 				// cancelled controller throws.
-				if (wasOpen) controller.close();
+				if (wasOpen) {
+					try {
+						controller.close();
+					} catch {
+						// Raced with a teardown between the check and the call.
+					}
+				}
 			}
 		},
 
 		async cancel() {
 			open = false;
+			// The heartbeat has to stop here, not in `finally`: `start` is still
+			// suspended in its `for await` and its `finally` may be minutes away.
+			// An interval left running against a detached request is a leak at
+			// best and, before the `write` guard above, was a killed process.
+			silence();
 			// Best effort: the run may already have finished, and a failure to
 			// cancel a finished run is not something the client could act on.
 			await cancelRun?.().catch(() => {});

@@ -47,9 +47,24 @@ export const POST: RequestHandler = async ({ request }) => {
 	const stream = new ReadableStream<Uint8Array>({
 		async start(controller) {
 			let open = true;
+			/*
+			 * Same guard as the two sibling stream routes, for a smaller reason.
+			 *
+			 * There is no heartbeat here, so no timer can throw into an empty stack
+			 * and kill the process. But a reader who navigates away mid-approval
+			 * still closes the controller under a running `for await`, and the
+			 * throw from the next `send` would land in the `catch` below, whose
+			 * first act is another `send` that throws again. That is a broken
+			 * response dressed as an error report. Latching `open` on the first
+			 * failure ends it quietly instead.
+			 */
 			const send = (event: string, data: unknown) => {
 				if (!open) return;
-				controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+				try {
+					controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+				} catch {
+					open = false;
+				}
 			};
 
 			try {
@@ -81,7 +96,11 @@ export const POST: RequestHandler = async ({ request }) => {
 				});
 			} finally {
 				open = false;
-				controller.close();
+				try {
+					controller.close();
+				} catch {
+					// Already torn down by the reader leaving. Nothing to close.
+				}
 			}
 		}
 	});
