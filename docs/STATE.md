@@ -122,4 +122,13 @@ Not yet set: `RESEND_API_KEY`, blob storage credentials.
 - `mv`, `cp` and `ls` are aliased interactively in this shell — use `/bin/ls`,
   and avoid `mv`/`cp` in scripted steps or they hang on a prompt.
 - Live/paid tests are gated behind `LIVE=1` so the default suite is hermetic.
+- **Touch no file in the repo while a browser run is in flight.** The dev
+  server watches the whole project root, so a page reload kills the running
+  conversation — and the reload is a full one, so the session store resets and
+  the run is lost. Two ways in, both learned the expensive way: `npm run check`
+  runs `svelte-kit sync`, which rewrites `.svelte-kit/generated/*`; and editing
+  a file under `docs/` does it too. This presents as the dev server crashing at
+  random and cost several paid runs before `preview_logs` showed the reload
+  landing at the same second as the edit. Verify in the browser first, then
+  check, test and commit.
 - Neo has a sharp eye for the book plates; show him before shipping any.

@@ -24,14 +24,18 @@
 
 	const ctx = $derived(session.context);
 
-	/** Billed input tokens for the turn in progress, or the last finished one. */
-	const inputTokens = $derived.by(() => {
-		for (let i = session.turns.length - 1; i >= 0; i--) {
-			const u = session.turns[i].usage;
-			if (u?.input) return u.input;
-		}
-		return 0;
-	});
+	/**
+	 * Billed input tokens for *this* request, not for the turn.
+	 *
+	 * The session pairs them: a context event is followed by its own call's
+	 * step-finish. Using the turn's running total instead would apportion the
+	 * sum of every call across the bands of one, which inflates every row and
+	 * looks entirely plausible while doing it.
+	 *
+	 * Zero between a context arriving and its step landing, which is correct —
+	 * nothing has been billed for this call yet, so no row claims a number.
+	 */
+	const inputTokens = $derived(session.contextTokens);
 
 	const rows = $derived<Part[]>(
 		ctx ? apportion(ctx.parts as Part[], inputTokens).sort((a, b) => b.chars - a.chars) : []

@@ -84,6 +84,23 @@ class Session {
 	 */
 	context = $state<Extract<ColophonEvent, { k: 'context' }> | undefined>();
 
+	/**
+	 * The input tokens billed for the request `context` describes — not the
+	 * turn's running total.
+	 *
+	 * These are different numbers and using the wrong one is a quiet lie. A turn
+	 * makes many provider calls; `turn.usage.input` is their *sum*, while
+	 * `context` is one call's request. Apportioning a cumulative total across a
+	 * single request's bands inflates every row, and the panel showed exactly
+	 * that before this existed.
+	 *
+	 * The pairing is exact because of the order the endpoint emits in: the
+	 * context for call N is sent when call N's first chunk arrives, and call N's
+	 * `step-finish` follows before call N+1 begins. So the next `step` after a
+	 * `context` is always that context's own call.
+	 */
+	contextTokens = $state(0);
+
 	#seq = 0;
 	#startedAt = 0;
 	#controller: AbortController | undefined;
@@ -117,6 +134,7 @@ class Session {
 		this.events = [];
 		this.papers = [];
 		this.context = undefined;
+		this.contextTokens = 0;
 		this.#seq = 0;
 	}
 
@@ -173,9 +191,13 @@ class Session {
 			}
 			case 'context':
 				this.context = event;
+				// Cleared, not carried over: showing the previous call's tokens
+				// against this call's bands is the bug this pairing exists to avoid.
+				this.contextTokens = 0;
 				break;
 			case 'step':
 				turn.usage = addUsage(turn.usage ?? ZERO, event.usage);
+				this.contextTokens = event.usage.input;
 				break;
 			case 'done':
 				turn.thinking = false;
