@@ -73,6 +73,11 @@
 	const stages: Stage[] = $derived.by(() => {
 		const nodes = topology?.nodes ?? [];
 
+		// Local to this computation and unreachable once it returns. `SvelteMap`
+		// makes a map's *mutations* reactive, which matters for state something
+		// else reads; this one is a grouping step inside the derived that already
+		// tracks `topology`.
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const byRank = new Map<number, StepNode[]>();
 		for (const node of nodes) {
 			const row = byRank.get(node.rank);

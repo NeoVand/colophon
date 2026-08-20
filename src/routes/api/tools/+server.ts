@@ -105,10 +105,30 @@ function describe(tool: unknown) {
 }
 
 export const GET: RequestHandler = async () => {
+	/*
+	 * All three factories, which is the whole point and was for a while only two.
+	 *
+	 * `createWritingTools` was imported here and never called, so `present_outline`
+	 * and `stylize_figure` — both on every single provider call, both carrying
+	 * long descriptions — were missing from the inventory and from the "whole
+	 * fixed tax" total beneath it. A panel whose stated job is to reconstruct the
+	 * per-call charge, quietly reconstructing four fifths of it, is the exact
+	 * failure this app exists to refuse. It surfaced as an unused-import lint
+	 * error, which is a reminder that a red lint is a broken instrument.
+	 *
+	 * `createWritingTools` takes an approved outline in a real run; none is
+	 * passed here because the schemas do not depend on it. The tool a run builds
+	 * with an outline and the tool this describes are the same shape on the wire.
+	 */
 	const { tools: research } = createResearchTools();
 	const { tools: images } = createImageTools();
+	const { tools: writing } = createWritingTools();
 
-	const tools = [...Object.values(research), ...Object.values(images)].map(describe);
+	const tools = [
+		...Object.values(research),
+		...Object.values(images),
+		...Object.values(writing)
+	].map(describe);
 
 	return json({
 		tools,

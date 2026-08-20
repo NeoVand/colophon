@@ -77,6 +77,10 @@ function inline(source: string, styles: StyleMap): string {
 	const held: string[] = [];
 	const hold = (html: string): string => `${HOLD}${held.push(html) - 1}${HOLD}`;
 
+	// The control character is the point: `HOLD` is a NUL-delimited sentinel, so
+	// any NUL arriving in the source could forge a placeholder and smuggle raw
+	// HTML past the escaper. Stripping it first is what makes the sentinel safe.
+	// eslint-disable-next-line no-control-regex
 	let text = source.replace(/\u0000/g, '');
 
 	// 1. Code spans — contents are literal, full stop.

@@ -130,6 +130,11 @@
 	 * morning while the heading still says today.
 	 */
 	const bands = $derived.by((): Band[] => {
+		// A scratch value used to find local midnight and discarded on the next
+		// line, never stored and never read reactively — so `SvelteDate`, which
+		// exists to make a *retained* Date's mutations trackable, would buy
+		// nothing here but a dependency and a slower constructor.
+		// eslint-disable-next-line svelte/prefer-svelte-reactivity
 		const midnight = new Date(now);
 		midnight.setHours(0, 0, 0, 0);
 		const today = midnight.getTime();

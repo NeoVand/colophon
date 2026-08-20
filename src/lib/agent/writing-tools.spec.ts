@@ -122,7 +122,7 @@ describe('stylize_figure', () => {
 	});
 
 	it('will not redraw without a paper to credit', () => {
-		const { arxivId: _drop, ...anonymous } = FIGURE;
+		const anonymous = { ...FIGURE, arxivId: undefined };
 		expect(schema(tools.stylize_figure).safeParse(anonymous).success).toBe(false);
 	});
 

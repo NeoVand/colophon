@@ -1,5 +1,6 @@
 <script lang="ts">
 	import { session, type KnownPaper } from '$lib/agent/session.svelte';
+	import { safeHref } from '$lib/markdown';
 	import { flip } from 'svelte/animate';
 	import { ICON } from '$lib/icons';
 	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
@@ -173,8 +174,25 @@
 					<span class="mark" aria-hidden="true"></span>
 					<div class="body">
 						<p class="title">
-							{#if paper.url}
-								<a href={paper.url} target="_blank" rel="noreferrer noopener">{paper.title}</a>
+							<!--
+								`safeHref`, not `paper.url` directly.
+
+								The lint rule that flagged this wants `resolve()`, which is the
+								wrong instrument — these are external arXiv links and never app
+								routes — but it was pointing at something real. A paper's `url`
+								is *data*: most of them are built by us as
+								`https://arxiv.org/abs/…`, and the rest arrive from a search
+								result, which is to say from outside. Interpolating an unchecked
+								string into an `href` is how a `javascript:` URL becomes a click
+								target. `safeHref` admits http, https and mailto and nothing
+								else — the same guard the markdown renderer uses, for the same
+								reason.
+							-->
+							{#if safeHref(paper.url ?? '')}
+								<!-- eslint-disable-next-line svelte/no-navigation-without-resolve -->
+								<a href={safeHref(paper.url ?? '')} target="_blank" rel="noreferrer noopener"
+									>{paper.title}</a
+								>
 							{:else}{paper.title}{/if}
 						</p>
 						<p class="meta co-num">

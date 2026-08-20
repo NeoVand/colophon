@@ -16,4 +16,15 @@
 	const html = $derived(renderMarkdown(text));
 </script>
 
+<!--
+	The one `{@html}` in the app, and the reason `markdown.ts` exists.
+
+	The rule this disables is the right rule; the safety is one layer up, where it
+	can be tested. `renderMarkdown` escapes every character of input before any
+	tag is emitted and passes hrefs through `safeHref`, which admits only http,
+	https and mailto — see `markdown.spec.ts`, where the XSS cases are the point
+	of the file. Sanitising again here would be sanitising output rather than
+	input, which is the version that gets it wrong.
+-->
+<!-- eslint-disable-next-line svelte/no-at-html-tags -->
 <div class="co-prose {className}">{@html html}</div>
