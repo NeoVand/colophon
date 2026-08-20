@@ -1,4 +1,4 @@
-import type { Processor } from '@mastra/core/processors';
+import type { ProcessOutputResultArgs } from '@mastra/core/processors';
 import { model } from '$lib/server/model';
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
@@ -74,11 +74,25 @@ export interface GateOptions {
  * went into producing it, which is precisely the sunk cost that should not
  * count.
  */
-export function deliveryGate({ minChars = 200, onVerdict }: GateOptions = {}): Processor {
+// The return type is inferred rather than annotated `: Processor`. The
+// annotation widens `processToolResult` back to optional, and `outputProcessors`
+// requires it present — so declaring the interface makes the object stop
+// satisfying the thing it was declared to satisfy.
+export function deliveryGate({ minChars = 200, onVerdict }: GateOptions = {}) {
 	return {
 		id: 'delivery-gate',
 
-		async processOutputResult({ result, messages, abort }) {
+		/**
+		 * A no-op, and required.
+		 *
+		 * `outputProcessors` is typed as `Processor & { processToolResult: … }` —
+		 * present, not optional — so a processor that only judges the finished
+		 * result still has to declare this hook. Leaving it off is a type error
+		 * that reads as if the whole processor is the wrong shape.
+		 */
+		processToolResult() {},
+
+		async processOutputResult({ result, messages, abort }: ProcessOutputResultArgs) {
 			const draft = result?.text ?? '';
 
 			// Too short to be worth a model call. The gate should be cheap on the

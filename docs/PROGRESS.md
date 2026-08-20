@@ -165,3 +165,27 @@ Updated as milestones land. After a context compaction, read this first.
   uncapped read would dominate the bill for the rest of the conversation. The
   real fix is a paper-reader subagent with its own context window; the cap is
   what stands in until then.
+
+- **2026-08-20** — M4: it runs without you. A real sweep, end to end, in 75s:
+  found papers since the high-water mark, read one, wrote a digest, the gate
+  judged it worth sending, and the whole thing was stored with its verdict.
+  The digest led with the practice-changing result, gave concrete deltas, and
+  named its own caveat unprompted.
+
+  Unauthenticated cron call → 401. Authenticated → runs.
+
+  **Design notes worth keeping:**
+  - A *withheld* digest is a successful sweep. `lastSweptAt` advances either
+    way, or tomorrow re-reads the same papers to reach the same verdict. Only a
+    genuine failure leaves the mark unmoved, so the next run retries.
+  - Papers are remembered even when the digest is withheld — the reading
+    happened, and forgetting it would mean paying to read them again.
+  - `outputProcessors` requires `processToolResult` to be *present*, and
+    annotating the return type `: Processor` widens it back to optional, so the
+    object stops satisfying the interface it was declared to satisfy. Inferred
+    return type, explicitly typed hook args.
+
+## Still needs Neo
+
+- **Resend account** for delivery. Everything up to the send is built; the
+  digest is written and stored, it just is not mailed yet.

@@ -19,6 +19,16 @@ import { SESSION_COOKIE, isGateConfigured, sessionIsValid } from '$lib/server/ga
 
 const PUBLIC_PATHS = new Set(['/login']);
 
+/**
+ * Routes that authenticate themselves rather than via the session cookie.
+ *
+ * `/api/cron/` is called by Vercel's scheduler, which sends no cookie — it
+ * carries a bearer token instead, and the route checks it. Letting it past the
+ * cookie gate is not a hole: it is a different door with its own lock, and that
+ * route refuses outright when its secret is unset.
+ */
+const SELF_AUTHENTICATING = ['/api/cron/'];
+
 export const handle: Handle = async ({ event, resolve }) => {
 	const { pathname } = event.url;
 
@@ -37,6 +47,7 @@ export const handle: Handle = async ({ event, resolve }) => {
 	event.locals.authenticated = authenticated;
 
 	if (authenticated || PUBLIC_PATHS.has(pathname)) return resolve(event);
+	if (SELF_AUTHENTICATING.some((prefix) => pathname.startsWith(prefix))) return resolve(event);
 
 	// An API caller wants a status code, not a login page it cannot render.
 	if (pathname.startsWith('/api/')) error(401, 'Not signed in.');
