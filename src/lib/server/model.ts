@@ -1,5 +1,6 @@
 import { createOpenAI } from '@ai-sdk/openai';
 import { env } from '$env/dynamic/private';
+import { watchdog } from './watchdog';
 
 /**
  * Model access — and the one seam the X-ray depends on.
@@ -39,7 +40,23 @@ export function provider(capture?: CaptureFetch) {
 				'add it to .env (no VITE_ prefix, which would ship it to the browser).'
 		);
 	}
-	return createOpenAI({ apiKey: env.OPENAI_API_KEY, fetch: capture });
+	/*
+	 * Every model call gets a deadline, and it is applied here for the same
+	 * reason the capture hook is: this is the one door, so a model built any
+	 * other way cannot quietly skip it.
+	 *
+	 * `watchdog` wraps `capture` rather than the other way round, so a stall is
+	 * still recorded by the X-ray as a request that was sent and then failed —
+	 * which is what it was, and the only version of the story that is useful.
+	 *
+	 * The deadlines are on silence, never on total duration: a research turn
+	 * legitimately streams for minutes. See `watchdog.ts` for the run that
+	 * hung for six of them with seven live timers and a 0%-CPU process.
+	 */
+	return createOpenAI({
+		apiKey: env.OPENAI_API_KEY,
+		fetch: watchdog(capture)
+	});
 }
 
 /** The default model for interactive work. */
