@@ -192,7 +192,7 @@ Updated as milestones land. After a context compaction, read this first.
 
 - **2026-08-20** — the paper-reader subagent. Verified live: two readers ran in
   parallel, each returning ~250 words, and `cite` with `requireRead: true`
-  then succeeded for *both* papers in the parent — provenance crossed the
+  then succeeded for _both_ papers in the parent — provenance crossed the
   delegation boundary while the text did not. 52.9k input, 45.3k cached.
 
   The reader gets a 200 KB excerpt where the parent gets 24 KB, because its
@@ -210,3 +210,31 @@ Updated as milestones land. After a context compaction, read this first.
   chunk kind for delegation, so that string is the only signal a second context
   window was spent. The projector reads it and tags the event, which is what
   lets the UI draw a lane instead of one more tool chip.
+
+- **2026-08-20** — image generation, gated on approval. Verified end to end:
+  gpt-image-2 → 1.72 MB PNG → Postgres bytea → read back with the PNG magic
+  number intact, then deleted.
+
+  `generate_image` carries `requireApproval: true`. Every other tool reads;
+  this one *spends*, and a loop that decides it wants eight illustrations costs
+  real money before anyone notices. What gets approved is the literal prompt the
+  model wrote, not a description of one — and the model cannot route around a
+  pause it does not control.
+
+  **Two bugs:**
+  - drizzle's neon-http driver returns a pg-style `{ fields, rows, … }`, not a
+    bare array. Treating it as an array read as "no such blob" — the put
+    succeeded, the get returned undefined, and nothing complained. A silent miss
+    is the worst shape of bug and it only showed up because the live test
+    checked the readback rather than trusting the write.
+  - One *low-quality* 1024×1024 render is 1.72 MB, which settles the storage
+    question: 0.5 GB holds about 300 images before the vault has room for
+    nothing else. Hence the 64 MB cap and the interface.
+
+## Still needs Neo
+
+- **R2 bucket** — images are in Postgres as a stopgap behind a 64 MB cap
+  (~37 images). R2 is 10 GB free with zero egress, which matters because a book
+  re-reads its plates on every view. The store is behind an interface, so the
+  swap is one file.
+- **Resend account** for digest delivery.

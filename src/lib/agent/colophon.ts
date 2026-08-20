@@ -3,6 +3,7 @@ import { model } from '$lib/server/model';
 import { agentMemory, isStorageConfigured } from '$lib/server/storage';
 import { createResearchTools, type ResearchTools } from './tools';
 import { createPaperReader } from './paper-reader';
+import { createImageTools } from './image-tools';
 
 /**
  * Colophon itself.
@@ -48,6 +49,17 @@ Two refusals mean different things:
 End anything substantial with \`bibliography\`, so the references are provably
 the papers you actually consulted.
 
+## Figures
+
+You can generate an illustration with \`generate_image\`. It pauses for the
+reader's approval before it spends, so calling it *is* asking — never ask in
+prose first, and never wait for a go-ahead before calling.
+
+Generate a figure only when it carries a claim that prose cannot. A process, a
+comparison, a structure: yes. A quantity: no — write the numbers in a table.
+If you cannot state in one sentence what single claim the figure makes, the
+document does not need it.
+
 ## Writing
 
 Lead with what is new or surprising, not with throat-clearing about the field's
@@ -78,7 +90,7 @@ export function createColophon({ thread }: { thread?: string } = {}): ColophonRu
 		// Always through the factory: the string and config-object model forms
 		// expose no fetch hook and would silently blind the X-ray. See CLAUDE.md.
 		model: model(),
-		tools: research.tools,
+		tools: { ...research.tools, ...createImageTools().tools },
 		...(remembers ? { memory: agentMemory() } : {})
 	});
 
