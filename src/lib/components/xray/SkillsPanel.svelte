@@ -3,6 +3,8 @@
 	import { ICON } from '$lib/icons';
 	import { session } from '$lib/agent/session.svelte';
 	import { SKILL_CARDS, type SkillCard } from '$lib/agent/skills';
+	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 
 	/**
 	 * What the agent could look up, and what it actually did.
@@ -31,8 +33,10 @@
 
 	let {
 		/** Overridable so the Lab can show a different roster than Study runs. */
-		skills = SKILL_CARDS
-	}: { skills?: readonly SkillCard[] } = $props();
+		skills = SKILL_CARDS,
+		/** Hosted in another frame's tab group; that frame draws the header. */
+		bare = false
+	}: { skills?: readonly SkillCard[]; bare?: boolean } = $props();
 
 	/**
 	 * Each skill, with what the run did to it.
@@ -78,99 +82,101 @@
 	let open = $state('');
 </script>
 
-<section class="panel">
-	<header>
-		<span class="co-num tally">
-			<span class="k">{skills.length}</span> available ·
-			<span class="k on">{activeCount}</span> activated
-		</span>
-	</header>
-
+<PanelFrame
+	{bare}
+	label="skills"
+	icon={ICON.skills}
+	tone="accent"
+	readout={skills.length ? `${skills.length} available · ${activeCount} activated` : undefined}
+>
 	{#if !skills.length}
-		<p class="quiet">No skills attached to this run.</p>
+		<EmptyState
+			icon={ICON.skills}
+			tone="accent"
+			title="No skills attached to this run"
+			note="A skill is a document the model can choose to read: its description rides on every call, its instructions arrive only when it asks for them by name. With none attached, everything this agent knows sits in its instructions and is paid for on every single call."
+		/>
 	{:else}
-		<ul class="list">
-			{#each rows as { card, used, read } (card.name)}
-				<li class="row" class:on={used > 0}>
-					<!--
-						Hollow ring → filled, the same two-state glyph the library panel
-						uses for depth. One shape whose inking changes reads as a scale;
-						two different badges read as two unrelated facts.
-					-->
-					<span class="mark" aria-hidden="true"></span>
+		<div class="content">
+			<ul class="list">
+				{#each rows as { card, used, read } (card.name)}
+					<li class="row" class:on={used > 0}>
+						<!--
+							Hollow ring → filled, the same two-state glyph the library panel
+							uses for depth. One shape whose inking changes reads as a scale;
+							two different badges read as two unrelated facts.
+						-->
+						<span class="mark" aria-hidden="true"></span>
 
-					<div class="body">
-						<button
-							class="head co-bare"
-							onclick={() => (open = open === card.name ? '' : card.name)}
-							aria-expanded={open === card.name}
-						>
-							<span class="name co-num">{card.name}</span>
-							<span class="co-eyebrow state">
-								{used ? (used > 1 ? `activated ×${used}` : 'activated') : 'dormant'}
-							</span>
-							<HugeiconsIcon icon={open === card.name ? ICON.expand : ICON.collapse} size={12} />
-						</button>
+						<div class="body">
+							<button
+								class="head co-bare"
+								onclick={() => (open = open === card.name ? '' : card.name)}
+								aria-expanded={open === card.name}
+							>
+								<span class="name co-num">{card.name}</span>
+								<span class="co-eyebrow state">
+									{used ? (used > 1 ? `activated ×${used}` : 'activated') : 'dormant'}
+								</span>
+								<HugeiconsIcon icon={open === card.name ? ICON.expand : ICON.collapse} size={12} />
+							</button>
 
-						<!-- The line the model sees on every call. It is the whole basis on
-						     which the model decides to activate, so it is quoted verbatim
-						     rather than paraphrased into panel copy. -->
-						<p class="desc">{card.description}</p>
+							<!-- The line the model sees on every call. It is the whole basis on
+							     which the model decides to activate, so it is quoted verbatim
+							     rather than paraphrased into panel copy. -->
+							<p class="desc">{card.description}</p>
 
-						{#if open === card.name}
-							<ul class="contributes">
-								{#each card.contributes as line, i (i)}
-									<li>{line}</li>
-								{/each}
-							</ul>
+							{#if open === card.name}
+								<ul class="contributes">
+									{#each card.contributes as line, i (i)}
+										<li>{line}</li>
+									{/each}
+								</ul>
 
-							{#if card.references.length}
-								<p class="refs co-num">
-									{#each card.references as file, i (file)}{i ? ', ' : ''}<span
-											class:got={read.includes(file)}>{file}</span
-										>{/each}
-									<span class="note">{read.length ? 'fetched' : 'available to skill_read'}</span>
+								{#if card.references.length}
+									<p class="refs co-num">
+										{#each card.references as file, i (file)}{i ? ', ' : ''}<span
+												class:got={read.includes(file)}>{file}</span
+											>{/each}
+										<span class="note">{read.length ? 'fetched' : 'available to skill_read'}</span>
+									</p>
+								{/if}
+
+								<p class="cost co-num">
+									<span class="k">{card.always}</span> tok in context always ·
+									<span class="k" class:on={used > 0}>{card.onDemand}</span> tok
+									{used ? 'loaded' : 'only if activated'}
 								</p>
 							{/if}
+						</div>
+					</li>
+				{/each}
+			</ul>
 
-							<p class="cost co-num">
-								<span class="k">{card.always}</span> tok in context always ·
-								<span class="k" class:on={used > 0}>{card.onDemand}</span> tok
-								{used ? 'loaded' : 'only if activated'}
-							</p>
-						{/if}
-					</div>
-				</li>
-			{/each}
-		</ul>
-
-		<p class="quiet foot">
-			{#if activeCount}
-				{alwaysCost} tokens of description ride on every call. The instructions arrive only when the model
-				asks for them, and they leave again on a compaction — so a long run may activate the same skill
-				more than once.
-			{:else}
-				Nothing activated yet. Only the {alwaysCost} tokens of description above are in context; the
-				{deferred} tokens of instruction stay out of it until the model calls
-				<code>skill</code>.
-			{/if}
-		</p>
+			<p class="quiet foot">
+				{#if activeCount}
+					{alwaysCost} tokens of description ride on every call. The instructions arrive only when the
+					model asks for them, and they leave again on a compaction — so a long run may activate the same
+					skill more than once.
+				{:else}
+					Nothing activated yet. Only the {alwaysCost} tokens of description above are in context; the
+					{deferred} tokens of instruction stay out of it until the model calls
+					<code>skill</code>.
+				{/if}
+			</p>
+		</div>
 	{/if}
-</section>
+</PanelFrame>
 
 <style>
-	.panel {
+	.content {
 		display: flex;
 		flex-direction: column;
-		min-height: 0;
 		gap: 0.5rem;
+		min-height: 0;
+		padding: 0.6rem 0.7rem 0.75rem;
 	}
 
-	.tally {
-		margin-left: auto;
-		font-size: 0.625rem;
-		color: var(--muted-foreground);
-	}
 	.k {
 		color: color-mix(in oklab, var(--foreground) 70%, transparent);
 	}

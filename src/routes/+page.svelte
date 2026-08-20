@@ -1,13 +1,15 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { Pane, PaneGroup } from 'paneforge';
 	import { session } from '$lib/agent/session.svelte';
 	import { theme } from '$lib/theme.svelte';
 	import { layout } from '$lib/layout.svelte';
 	import * as threads from '$lib/threads';
+	import { ICON } from '$lib/icons';
 
 	import Header from '$lib/components/Header.svelte';
-	import Split from '$lib/components/Split.svelte';
-	import Stack, { type PanelSpec } from '$lib/components/Stack.svelte';
+	import Divider from '$lib/components/Divider.svelte';
+	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
 	import Conversation from '$lib/components/chat/Conversation.svelte';
 	import Composer from '$lib/components/chat/Composer.svelte';
 	import ActivityStrip from '$lib/components/chat/ActivityStrip.svelte';
@@ -16,32 +18,61 @@
 	import AboutSheet from '$lib/components/AboutSheet.svelte';
 	import Cockpit from '$lib/components/cockpit/Cockpit.svelte';
 
-	import SpendBar from '$lib/components/xray/SpendBar.svelte';
-	import MemoryPanel from '$lib/components/xray/MemoryPanel.svelte';
+	import WorkflowPanel from '$lib/components/xray/WorkflowPanel.svelte';
+	import EventTimeline from '$lib/components/xray/EventTimeline.svelte';
 	import ContextPanel from '$lib/components/xray/ContextPanel.svelte';
 	import LibraryPanel from '$lib/components/xray/LibraryPanel.svelte';
-	import EventTimeline from '$lib/components/xray/EventTimeline.svelte';
+	import FiguresPanel from '$lib/components/xray/FiguresPanel.svelte';
 	import GraphPanel from '$lib/components/xray/GraphPanel.svelte';
-	import McpPanel from '$lib/components/xray/McpPanel.svelte';
+	import ToolsPanel from '$lib/components/xray/ToolsPanel.svelte';
+	import SubagentsPanel from '$lib/components/xray/SubagentsPanel.svelte';
 	import SkillsPanel from '$lib/components/xray/SkillsPanel.svelte';
+	import MemoryPanel from '$lib/components/xray/MemoryPanel.svelte';
+	import McpPanel from '$lib/components/xray/McpPanel.svelte';
+	import TracePanel from '$lib/components/xray/TracePanel.svelte';
+	import SpendBar from '$lib/components/xray/SpendBar.svelte';
+	import RunPanel from '$lib/components/xray/RunPanel.svelte';
 
 	/**
-	 * The working surface: a conversation, and the dissection beside it.
+	 * Three columns: the work, the run, and the machine.
 	 *
-	 * The flank is a `Split` rather than a fixed column and a `Stack` rather
-	 * than a fixed order — the divider drags, the instruments reorder, fold and
-	 * hide. That is not decoration: eight panels do not fit a screen at once,
-	 * and which of them matter depends entirely on what you are doing. Reading
-	 * a paper, the library and events; tuning a prompt, the context window.
+	 * The first arrangement was two columns with a dozen instruments stacked in
+	 * a scrolling strip, and it was rejected on sight — correctly. A column of
+	 * twelve collapsed labels is a settings page. What makes an instrument panel
+	 * legible is that things which answer the same question sit together, and
+	 * that each one gets enough room to be read rather than scrolled.
 	 *
-	 * `onMount` for every startup call. All of them read `localStorage` and
-	 * write tracked state, which inside an `$effect` is a write to something the
-	 * effect depends on — `effect_update_depth_exceeded`, shipped twice here.
+	 * So the split is by *question*, not by subsystem:
+	 *
+	 *   chat     what you asked, and what came back
+	 *   middle   what is happening right now — the pipeline, the event stream,
+	 *            and the request going out this second
+	 *   right    what the machine is made of — its shape, its tools, its crew,
+	 *            what it remembers
+	 *
+	 * The middle column changes constantly during a run. The right column barely
+	 * changes at all: it is the harness, and it is what you read *between* runs.
+	 * Putting a live event stream next to a static tool inventory was most of
+	 * why the first version felt like noise.
+	 *
+	 * Panels are grouped into tabs where they are two readings of one subject.
+	 * A tab is never navigation here — `library`/`figures` is "what this run
+	 * gathered", seen two ways.
+	 *
+	 * Every pane is resizable and every size persists via paneforge's
+	 * `autoSaveId`. `onMount` for the stores: each reads `localStorage` and
+	 * writes tracked state, which inside an `$effect` is
+	 * `effect_update_depth_exceeded` — shipped twice here already.
 	 */
 	let settingsOpen = $state(false);
 	let aboutOpen = $state(false);
 	let threadsOpen = $state(false);
 	let model = $state('gpt-5');
+	let mode = $state<'chat' | 'research'>('chat');
+
+	/** Which tab each grouped panel is showing. */
+	let gathered = $state('library');
+	let machine = $state('graph');
 
 	onMount(() => {
 		theme.start();
@@ -49,29 +80,6 @@
 		session.restore();
 		threads.touch(session.thread);
 	});
-
-	/**
-	 * The instruments, in the order they are first offered.
-	 *
-	 * `grow` is each panel's share of the leftover height. Spend, memory, skills
-	 * and MCP are a fixed handful of rows and take none — giving them an equal
-	 * eighth starves the four that are lists. Events earns the most: it is the
-	 * one that is useless with three rows showing.
-	 */
-	const PANELS: PanelSpec[] = [
-		{ id: 'spend', label: 'spend', tone: 'tok-new', component: SpendBar, grow: 0 },
-		{ id: 'memory', label: 'memory', tone: 'memory', component: MemoryPanel, grow: 0 },
-		{ id: 'graph', label: 'graph', tone: 'subagent', component: GraphPanel, grow: 0.9 },
-		{ id: 'context', label: 'context', tone: 'memory', component: ContextPanel, grow: 0.8 },
-		{ id: 'library', label: 'library', tone: 'library', component: LibraryPanel, grow: 1.1 },
-		{ id: 'events', label: 'events', tone: 'tool', component: EventTimeline, grow: 1.4 },
-		{ id: 'skills', label: 'skills', tone: 'accent', component: SkillsPanel, grow: 0 },
-		{ id: 'mcp', label: 'mcp', tone: 'tool', component: McpPanel, grow: 0 }
-	];
-
-	const panelVisibility = $derived(
-		Object.fromEntries(PANELS.map((p) => [p.id, layout.isVisible(p.id)]))
-	);
 
 	function openThread(id: string) {
 		session.open(id);
@@ -101,31 +109,107 @@
 
 	<main>
 		{#if layout.showFlank}
-			<Split defaultSize={layout.flank} onresize={(p) => layout.setFlank(p)}>
-				{#snippet left()}
-					{@render work()}
-				{/snippet}
-				{#snippet right()}
-					<aside class="flank">
-						{#if layout.mode === 'cockpit'}
-							<Cockpit />
-						{:else}
-							<Stack panels={PANELS} />
-						{/if}
-					</aside>
-				{/snippet}
-			</Split>
+			<PaneGroup direction="horizontal" autoSaveId="co:root" class="group">
+				<Pane defaultSize={34} minSize={22}>{@render chat()}</Pane>
+				<Divider />
+				<Pane defaultSize={66} minSize={30}>
+					{#if layout.mode === 'cockpit'}
+						<div class="cockpit-host"><Cockpit /></div>
+					{:else}
+						<PaneGroup direction="horizontal" autoSaveId="co:xray" class="group">
+							<!-- ── what is happening right now ───────────────────── -->
+							<Pane defaultSize={44} minSize={24}>
+								<PaneGroup direction="vertical" autoSaveId="co:live" class="group">
+									<Pane defaultSize={26} minSize={10} collapsible collapsedSize={6}>
+										<WorkflowPanel />
+									</Pane>
+									<Divider direction="vertical" />
+									<Pane defaultSize={42} minSize={16}>
+										<EventTimeline />
+									</Pane>
+									<Divider direction="vertical" />
+									<Pane defaultSize={32} minSize={12} collapsible collapsedSize={6}>
+										<ContextPanel />
+									</Pane>
+								</PaneGroup>
+							</Pane>
+
+							<Divider />
+
+							<!-- ── what the machine is made of ───────────────────── -->
+							<Pane defaultSize={56} minSize={26}>
+								<PaneGroup direction="vertical" autoSaveId="co:machine" class="group">
+									<Pane defaultSize={40} minSize={16}>
+										<PanelFrame
+											label="gathered"
+											icon={ICON.library}
+											tone="library"
+											bind:active={gathered}
+											tabs={[
+												{ id: 'library', label: 'library', icon: ICON.paper },
+												{ id: 'figures', label: 'figures', icon: ICON.figure }
+											]}
+										>
+											{#if gathered === 'library'}
+												<LibraryPanel bare />
+											{:else}
+												<FiguresPanel bare />
+											{/if}
+										</PanelFrame>
+									</Pane>
+									<Divider direction="vertical" />
+									<Pane defaultSize={40} minSize={18}>
+										<PanelFrame
+											label="harness"
+											icon={ICON.workflow}
+											tone="subagent"
+											bind:active={machine}
+											tabs={[
+												{ id: 'graph', label: 'graph' },
+												{ id: 'tools', label: 'tools' },
+												{ id: 'crew', label: 'crew' },
+												{ id: 'skills', label: 'skills' },
+												{ id: 'memory', label: 'memory' },
+												{ id: 'mcp', label: 'mcp' },
+												{ id: 'trace', label: 'trace' }
+											]}
+										>
+											{#if machine === 'graph'}<GraphPanel bare />
+											{:else if machine === 'tools'}<ToolsPanel bare />
+											{:else if machine === 'crew'}<SubagentsPanel bare />
+											{:else if machine === 'skills'}<SkillsPanel bare />
+											{:else if machine === 'memory'}<MemoryPanel bare />
+											{:else if machine === 'mcp'}<McpPanel bare />
+											{:else}<TracePanel bare />{/if}
+										</PanelFrame>
+									</Pane>
+									<Divider direction="vertical" />
+									<!-- The two readouts you glance at rather than read, so they
+									     sit at the bottom where the eye rests between runs. -->
+									<Pane defaultSize={20} minSize={10} collapsible collapsedSize={6}>
+										<PaneGroup direction="horizontal" autoSaveId="co:vitals" class="group">
+											<Pane defaultSize={50} minSize={25}><RunPanel /></Pane>
+											<Divider />
+											<Pane defaultSize={50} minSize={25}><SpendBar /></Pane>
+										</PaneGroup>
+									</Pane>
+								</PaneGroup>
+							</Pane>
+						</PaneGroup>
+					{/if}
+				</Pane>
+			</PaneGroup>
 		{:else}
-			{@render work()}
+			{@render chat()}
 		{/if}
 	</main>
 </div>
 
-{#snippet work()}
+{#snippet chat()}
 	<section class="work">
 		<Conversation />
 		<ActivityStrip />
-		<Composer />
+		<Composer bind:mode />
 	</section>
 {/snippet}
 
@@ -135,8 +219,6 @@
 	bind:open={settingsOpen}
 	{model}
 	onmodel={(m) => (model = m)}
-	panels={panelVisibility}
-	onpanel={(id) => layout.toggleVisible(id)}
 	onclear={() => {
 		threads.clear();
 		layout.reset();
@@ -161,28 +243,22 @@
 		display: flex;
 	}
 
-	.work {
-		flex: 1;
-		min-width: 0;
+	/* paneforge's own element, which Svelte does not scope-stamp. */
+	main :global(.group) {
 		height: 100%;
-		display: flex;
-		flex-direction: column;
+		width: 100%;
 	}
 
-	/*
-		A flank, not a sidebar.
-
-		Separated by the splitter's hairline and nothing else — no card, no
-		shadow, no second background. The instruments inside are already
-		obviously distinct objects; a box around each is how a panel of readouts
-		becomes a form.
-	*/
-	.flank {
+	.work {
 		height: 100%;
 		display: flex;
 		flex-direction: column;
-		padding: 0.7rem 0.5rem 0.7rem 0.85rem;
-		min-height: 0;
+		min-width: 0;
+	}
+
+	.cockpit-host {
+		height: 100%;
+		padding: 0.8rem;
 		overflow: hidden;
 	}
 </style>

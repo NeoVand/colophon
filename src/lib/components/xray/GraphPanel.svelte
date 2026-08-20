@@ -2,6 +2,9 @@
 	import { onMount } from 'svelte';
 	import { session } from '$lib/agent/session.svelte';
 	import { readTopology, type Topology } from '$lib/agent/topology';
+	import { ICON } from '$lib/icons';
+	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 	import GraphView from './GraphView.svelte';
 	import GraphLegend from './GraphLegend.svelte';
 
@@ -17,6 +20,9 @@
 	 * without a deploy — it is the code's shape, not the run's. What changes per
 	 * run is which node is lit.
 	 */
+
+	/** Hosted in another frame's tab group; that frame draws the header. */
+	let { bare = false }: { bare?: boolean } = $props();
 
 	let topology = $state<Topology | undefined>();
 	let error = $state('');
@@ -51,36 +57,35 @@
 	});
 </script>
 
-<section class="panel">
+<PanelFrame
+	{bare}
+	label="graph"
+	icon={ICON.graph}
+	tone="subagent"
+	readout={topology ? `${topology.nodes.length - 2} steps` : undefined}
+>
 	{#if error}
-		<p class="quiet">Could not read the pipeline: {error}</p>
+		<EmptyState
+			icon={ICON.graph}
+			tone="subagent"
+			title="The pipeline could not be read"
+			note={error}
+		/>
 	{:else if !topology}
-		<p class="quiet">…</p>
+		<EmptyState icon={ICON.graph} tone="subagent" title="Reading the pipeline…" />
 	{:else}
 		<div class="drawing">
 			<GraphView {topology} {active} />
 		</div>
 		<GraphLegend />
 	{/if}
-</section>
+</PanelFrame>
 
 <style>
-	.panel {
-		display: flex;
-		flex-direction: column;
-		gap: 0.4rem;
-		min-height: 0;
-	}
-
 	.drawing {
 		flex: 1;
 		min-height: 0;
 		display: flex;
-	}
-
-	.quiet {
-		margin: 0;
-		font-size: 0.75rem;
-		color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
+		padding: 0.4rem 0.7rem 0;
 	}
 </style>

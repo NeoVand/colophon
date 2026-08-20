@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { session } from '$lib/agent/session.svelte';
 	import { flip } from 'svelte/animate';
+	import { ICON } from '$lib/icons';
+	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 
 	/**
 	 * Every paper this run has met, and how well it knows each one.
@@ -48,21 +51,27 @@
 			.sort((a, b) => rank(a.p) - rank(b.p) || a.i - b.i)
 			.map(({ p }) => p)
 	);
+
+	/** Hosted in another frame's tab group; that frame draws the header. */
+	let { bare = false }: { bare?: boolean } = $props();
 </script>
 
-<section class="panel">
-	<header>
-		{#if papers.length}
-			<span class="co-num tally">
-				<span class="k listed">{papers.length}</span> seen ·
-				<span class="k read">{readCount}</span> read ·
-				<span class="k cited">{citedCount}</span> cited
-			</span>
-		{/if}
-	</header>
-
+<PanelFrame
+	{bare}
+	label="library"
+	icon={ICON.library}
+	tone="library"
+	readout={papers.length
+		? `${papers.length} seen · ${readCount} read · ${citedCount} cited`
+		: undefined}
+>
 	{#if !papers.length}
-		<p class="quiet">Nothing retrieved yet. A search puts papers here.</p>
+		<EmptyState
+			icon={ICON.library}
+			tone="library"
+			title="Nothing retrieved yet"
+			note="A search puts papers here — and the mark beside each says whether it was merely listed, actually read, or cited. The distance between those three is the honest measure of a run."
+		/>
 	{:else}
 		<ul>
 			{#each ordered as paper (paper.id)}
@@ -101,40 +110,14 @@
 			{/each}
 		</ul>
 	{/if}
-</section>
+</PanelFrame>
 
 <style>
-	.panel {
-		display: flex;
-		flex-direction: column;
-		min-height: 0;
-		gap: 0.5rem;
-	}
-
-	.tally {
-		margin-left: auto;
-		font-size: 0.625rem;
-		color: var(--muted-foreground);
-	}
-	.k.listed {
-		color: color-mix(in oklab, var(--co-library) 55%, var(--muted-foreground));
-	}
-	.k.read {
-		color: var(--co-library);
-	}
-	.k.cited {
-		color: var(--co-accent);
-	}
-
-	.quiet {
-		margin: 0;
-		font-size: 0.75rem;
-		color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
-	}
-
+	/* The scroller carries the indent, so rows and their hairlines start at the
+	   header's left edge rather than at the frame's. */
 	ul {
 		margin: 0;
-		padding: 0;
+		padding: 0.35rem 0.7rem 0.6rem;
 		list-style: none;
 		overflow-y: auto;
 		min-height: 0;

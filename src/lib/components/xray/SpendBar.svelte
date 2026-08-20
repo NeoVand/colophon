@@ -1,5 +1,8 @@
 <script lang="ts">
 	import { session } from '$lib/agent/session.svelte';
+	import { ICON } from '$lib/icons';
+	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 
 	/**
 	 * Where the tokens went.
@@ -50,54 +53,53 @@
 	const sum = $derived(segments.reduce((t, s) => t + s.n, 0));
 </script>
 
-<section class="panel">
-	<header>
-		<span class="co-num total">{u.total ? u.total.toLocaleString() : '—'}</span>
-	</header>
-
+<PanelFrame
+	label="spend"
+	icon={ICON.spend}
+	tone="tok-new"
+	readout={u.total ? u.total.toLocaleString() : undefined}
+>
 	{#if !sum}
-		<p class="quiet">No tokens spent yet.</p>
+		<EmptyState
+			icon={ICON.spend}
+			tone="tok-new"
+			title="Nothing spent yet"
+			note="The first turn splits the bill four ways. The total is the least useful number in it — a conversation that is mostly cached input is cheap however large it looks, and one that is mostly reasoning is expensive in a way a shorter question will not fix."
+		/>
 	{:else}
-		<div class="bar" role="img" aria-label="Token breakdown">
-			{#each segments as s (s.key)}
-				<span
-					class="seg"
-					style:--tone="var({s.tone})"
-					style:flex-grow={s.n}
-					title="{s.key}: {s.n.toLocaleString()} — {s.note}"
-				></span>
-			{/each}
+		<div class="content">
+			<div class="bar" role="img" aria-label="Token breakdown">
+				{#each segments as s (s.key)}
+					<span
+						class="seg"
+						style:--tone="var({s.tone})"
+						style:flex-grow={s.n}
+						title="{s.key}: {s.n.toLocaleString()} — {s.note}"
+					></span>
+				{/each}
+			</div>
+			<ul class="legend">
+				{#each segments as s (s.key)}
+					<li>
+						<span class="swatch" style:--tone="var({s.tone})"></span>
+						<span class="name">{s.key}</span>
+						<span class="co-num n">{s.n.toLocaleString()}</span>
+						<span class="co-num pct">{Math.round((s.n / sum) * 100)}%</span>
+					</li>
+				{/each}
+			</ul>
 		</div>
-		<ul class="legend">
-			{#each segments as s (s.key)}
-				<li>
-					<span class="swatch" style:--tone="var({s.tone})"></span>
-					<span class="name">{s.key}</span>
-					<span class="co-num n">{s.n.toLocaleString()}</span>
-					<span class="co-num pct">{Math.round((s.n / sum) * 100)}%</span>
-				</li>
-			{/each}
-		</ul>
 	{/if}
-</section>
+</PanelFrame>
 
 <style>
-	.panel {
+	/* The frame draws the header and its hairline; this is only what sits under
+	   it, indented to the same left edge as the label above. */
+	.content {
 		display: flex;
 		flex-direction: column;
 		gap: 0.5rem;
-		flex: none;
-	}
-	.total {
-		margin-left: auto;
-		font-size: 0.625rem;
-		color: var(--muted-foreground);
-	}
-
-	.quiet {
-		margin: 0;
-		font-size: 0.75rem;
-		color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
+		padding: 0.6rem 0.7rem 0.75rem;
 	}
 
 	.bar {

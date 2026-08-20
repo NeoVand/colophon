@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { session, type LoggedEvent } from '$lib/agent/session.svelte';
 	import { subagentOf } from '$lib/agent/events';
+	import { ICON } from '$lib/icons';
+	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 
 	/**
 	 * Every event in the run, in the order it arrived.
@@ -22,7 +25,16 @@
 	 * answer they compose is already on screen to the left.
 	 */
 
-	let filter = $state<'all' | 'tools' | 'quiet'>('tools');
+	/**
+	 * The three readings, as tabs on the frame rather than as buttons of this
+	 * panel's own. They are the same subject seen at three depths, which is
+	 * exactly what a tab is for — `tools` is what the run *did*, `quiet` drops
+	 * the per-token chatter, `all` is the wire.
+	 *
+	 * A plain string because `PanelFrame`'s `active` is bindable and untyped
+	 * beyond `string`; the comparisons below are the narrowing.
+	 */
+	let filter = $state('tools');
 
 	interface Row {
 		key: string;
@@ -181,15 +193,23 @@
 	}
 
 	const all = $derived(rowsOf(session.events));
-	const rows = $derived(
-		filter === 'all'
-			? all
-			: filter === 'tools'
-				? all.filter(
-						(r) => r.kind.startsWith('tool') || r.kind === 'approval' || r.kind === 'tripwire'
-					)
-				: all.filter((r) => r.kind !== 'text' && r.kind !== 'step' && r.kind !== 'reasoning')
+
+	/* Each reading materialised rather than switched on, so the tabs can carry
+	   their own counts — the number beside a tab is the reason to reach for it. */
+	const toolRows = $derived(
+		all.filter((r) => r.kind.startsWith('tool') || r.kind === 'approval' || r.kind === 'tripwire')
 	);
+	const quietRows = $derived(
+		all.filter((r) => r.kind !== 'text' && r.kind !== 'step' && r.kind !== 'reasoning')
+	);
+
+	const rows = $derived(filter === 'all' ? all : filter === 'tools' ? toolRows : quietRows);
+
+	const tabs = $derived([
+		{ id: 'tools', label: 'tools', count: toolRows.length },
+		{ id: 'quiet', label: 'quiet', count: quietRows.length },
+		{ id: 'all', label: 'all', count: all.length }
+	]);
 
 	let scroller = $state<HTMLDivElement>();
 	$effect(() => {
@@ -198,22 +218,24 @@
 	});
 </script>
 
-<section class="panel">
-	<header>
-		<div class="filters">
-			{#each ['tools', 'quiet', 'all'] as f (f)}
-				<button
-					class="co-eyebrow f"
-					class:on={filter === f}
-					onclick={() => (filter = f as typeof filter)}>{f}</button
-				>
-			{/each}
-		</div>
-		<span class="co-num count">{all.length}</span>
-	</header>
-
-	{#if !rows.length}
-		<p class="quiet">Nothing yet. Every chunk the run publishes lands here.</p>
+<PanelFrame label="events" icon={ICON.events} tone="tool" {tabs} bind:active={filter}>
+	{#if !all.length}
+		<EmptyState
+			icon={ICON.events}
+			tone="tool"
+			title="Nothing yet"
+			note="Every chunk the run publishes lands here, in order. A delegation gets its own indented lane, and the elapsed time on each row is what tells one slow fetch apart from thirty quick ones."
+		/>
+	{:else if !rows.length}
+		<!-- Honest about which of the two emptinesses this is: the run did publish
+		     events, this reading just excludes all of them. Showing the same
+		     "nothing yet" copy here would blame the run for a filter. -->
+		<EmptyState
+			icon={ICON.filter}
+			tone="tool"
+			title="Nothing in this reading"
+			note="The run published {all.length} events and none of them survive this filter. Switch to all to see the wire itself, folded text deltas included."
+		/>
 	{:else}
 		<div bind:this={scroller} class="rows">
 			{#each rows as row (row.key)}
@@ -226,50 +248,13 @@
 			{/each}
 		</div>
 	{/if}
-</section>
+</PanelFrame>
 
 <style>
-	.panel {
-		display: flex;
-		flex-direction: column;
-		min-height: 0;
-		gap: 0.5rem;
-	}
-
-	.filters {
-		display: flex;
-		gap: 0.15rem;
-	}
-	.f {
-		border: 0;
-		background: transparent;
-		padding: 0 0.25rem;
-		cursor: pointer;
-		font-size: 0.5625rem;
-		color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
-	}
-	.f:hover {
-		color: var(--muted-foreground);
-	}
-	.f.on {
-		color: var(--co-accent);
-	}
-
-	.count {
-		margin-left: auto;
-		font-size: 0.625rem;
-		color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
-	}
-
-	.quiet {
-		margin: 0;
-		font-size: 0.75rem;
-		color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
-	}
-
 	.rows {
 		overflow-y: auto;
 		min-height: 0;
+		padding: 0.4rem 0.7rem 0.6rem;
 		font-family: var(--font-mono);
 		font-size: 0.6875rem;
 		line-height: 1.7;

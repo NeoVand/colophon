@@ -1,7 +1,8 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
-	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { ICON } from '$lib/icons';
+	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 
 	/**
 	 * Tools that do not live in this repository.
@@ -89,6 +90,12 @@
 	const live = $derived(servers.filter((s) => !s.error));
 	const toolCount = $derived(live.reduce((n, s) => n + s.tools.length, 0));
 
+	const tally = $derived(
+		loaded && configured
+			? `${live.length}/${servers.length} connected · ${toolCount} tool${toolCount === 1 ? '' : 's'}`
+			: undefined
+	);
+
 	/** The host alone. A full URL in a 0.625rem column is noise with a scrollbar. */
 	function host(url: string): string {
 		try {
@@ -97,148 +104,143 @@
 			return url;
 		}
 	}
+
+	/** Hosted in another frame's tab group; that frame draws the header. */
+	let { bare = false }: { bare?: boolean } = $props();
 </script>
 
-<section class="panel">
-	<header>
-		<HugeiconsIcon icon={ICON.mcp} size={11} />
-		<span class="spacer"></span>
-		{#if loaded && configured}
-			<span class="co-num tally">
-				{live.length}/{servers.length} connected · {toolCount} tool{toolCount === 1 ? '' : 's'}
-			</span>
-		{/if}
+<PanelFrame {bare} label="mcp" icon={ICON.mcp} tone="tool" readout={tally}>
+	{#snippet actions()}
 		{#if loaded}
 			<button class="co-eyebrow recheck" onclick={load} disabled={loading}>
 				{loading ? '…' : 'recheck'}
 			</button>
 		{/if}
-	</header>
+	{/snippet}
 
 	{#if !loaded}
-		<p class="quiet">…</p>
+		<p class="quiet pad">…</p>
 	{:else if fetchError}
-		<p class="err">{fetchError}</p>
+		<p class="err pad">{fetchError}</p>
 	{:else if !configured}
 		<!--
 			The empty state does the teaching, because for most readers this panel
 			will never have anything in it — and "no MCP servers" is worth
 			understanding, whereas an empty box is not.
 		-->
-		<p class="quiet">
-			The Model Context Protocol is how an agent picks up tools it did not ship with. You point it
-			at a server, it asks what that server can do, and those tools join the ones built in — no
-			deploy, no code here that knows their names.
-		</p>
-		{#if configError}
-			<p class="err">{configError}</p>
-			<p class="quiet">Until that parses, Colophon runs on its own four tools.</p>
-		{:else}
-			<p class="quiet">
-				None is configured. Set <code>MCP_SERVERS</code> to a JSON array and every tool each server offers
-				appears here.
-			</p>
-			<pre class="example">{EXAMPLE}</pre>
-		{/if}
+		<EmptyState
+			icon={ICON.mcp}
+			tone="tool"
+			title="No servers connected"
+			note="The Model Context Protocol is how an agent picks up tools it did not ship with. You point it at a server, it asks what that server can do, and those tools join the ones built in — no deploy, and no code here that knows their names."
+		/>
+		<div class="hint">
+			{#if configError}
+				<p class="err">{configError}</p>
+				<p class="quiet">Until that parses, Colophon runs on its own four tools.</p>
+			{:else}
+				<p class="quiet">
+					Set <code>MCP_SERVERS</code> to a JSON array and every tool each server offers appears here.
+				</p>
+				<pre class="example">{EXAMPLE}</pre>
+			{/if}
+		</div>
 	{:else}
-		{#if configError}
-			<p class="err">{configError}</p>
-		{/if}
+		<div class="content">
+			{#if configError}
+				<p class="err">{configError}</p>
+			{/if}
 
-		<ul class="servers">
-			{#each servers as server (server.name)}
-				<li class="server" class:down={Boolean(server.error)}>
-					<div class="ident">
-						<span class="name">{server.name}</span>
-						<span class="co-eyebrow transport">{server.transport}</span>
-						<span class="co-num where">{host(server.url)}</span>
-					</div>
+			<ul class="servers">
+				{#each servers as server (server.name)}
+					<li class="server" class:down={Boolean(server.error)}>
+						<div class="ident">
+							<span class="name">{server.name}</span>
+							<span class="co-eyebrow transport">{server.transport}</span>
+							<span class="co-num where">{host(server.url)}</span>
+						</div>
 
-					{#if server.error}
-						<p class="err">{server.error}</p>
-					{:else}
-						<p class="co-num software">
-							{server.software ?? 'connected'} · {server.tools.length} tool{server.tools.length ===
-							1
-								? ''
-								: 's'}
-						</p>
-
-						{#if server.tools.length}
-							<ul class="tools">
-								{#each server.tools as tool (tool.id)}
-									<li class="tool">
-										<p class="id co-num">
-											<span class="prefix">{PREFIX}</span>{tool.id.startsWith(PREFIX)
-												? tool.id.slice(PREFIX.length)
-												: tool.id}
-										</p>
-										{#if tool.description}
-											<p class="what">{tool.description}</p>
-										{/if}
-									</li>
-								{/each}
-							</ul>
+						{#if server.error}
+							<p class="err">{server.error}</p>
 						{:else}
-							<p class="quiet">Connected, and offering nothing.</p>
-						{/if}
-					{/if}
-				</li>
-			{/each}
-		</ul>
+							<p class="co-num software">
+								{server.software ?? 'connected'} · {server.tools.length} tool{server.tools
+									.length === 1
+									? ''
+									: 's'}
+							</p>
 
-		{#if toolCount}
-			<p class="quiet foot">
-				Each keeps its <code>{PREFIX}</code> prefix everywhere it appears, so a chip in the conversation
-				says which tools came from outside.
-			</p>
-		{/if}
+							{#if server.tools.length}
+								<ul class="tools">
+									{#each server.tools as tool (tool.id)}
+										<li class="tool">
+											<p class="id co-num">
+												<span class="prefix">{PREFIX}</span>{tool.id.startsWith(PREFIX)
+													? tool.id.slice(PREFIX.length)
+													: tool.id}
+											</p>
+											{#if tool.description}
+												<p class="what">{tool.description}</p>
+											{/if}
+										</li>
+									{/each}
+								</ul>
+							{:else}
+								<p class="quiet">Connected, and offering nothing.</p>
+							{/if}
+						{/if}
+					</li>
+				{/each}
+			</ul>
+
+			{#if toolCount}
+				<p class="quiet foot">
+					Each keeps its <code>{PREFIX}</code> prefix everywhere it appears, so a chip in the conversation
+					says which tools came from outside.
+				</p>
+			{/if}
+		</div>
 	{/if}
-</section>
+</PanelFrame>
 
 <style>
-	.panel {
-		display: flex;
-		flex-direction: column;
-		gap: 0.45rem;
-		min-height: 0;
-	}
-
-	header {
-		display: flex;
-		align-items: center;
-		gap: 0.4rem;
-		flex: none;
-		color: color-mix(in oklab, var(--co-tool) 70%, var(--muted-foreground));
-	}
-	header .co-eyebrow {
-		color: inherit;
-	}
-
-	/* Takes the slack, so the readouts sit right without either of them
-	   needing an auto margin — two flex items both claiming one would split
-	   the free space between them rather than both going to the edge. */
-	.spacer {
-		flex: 1;
-	}
-
-	.tally {
-		font-size: 0.625rem;
-		color: var(--muted-foreground);
-	}
-
 	.recheck {
 		border: 0;
 		background: transparent;
-		padding: 0;
+		padding: 0 0.2rem;
 		cursor: pointer;
 		color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+		transition: color 150ms ease;
 	}
 	.recheck:hover:not(:disabled) {
 		color: var(--co-accent);
 	}
 	.recheck:disabled {
 		cursor: default;
+	}
+
+	.content {
+		display: flex;
+		flex-direction: column;
+		gap: 0.45rem;
+		min-height: 0;
+		padding: 0.6rem 0.7rem 0.75rem;
+	}
+
+	/* Follows the empty state rather than living inside it: `EmptyState` takes a
+	   sentence, and the thing a reader needs next is a line of JSON they can
+	   copy. Centred to sit under the icon it belongs to. */
+	.hint {
+		flex: none;
+		display: flex;
+		flex-direction: column;
+		gap: 0.3rem;
+		padding: 0 1.75rem 1.5rem;
+		text-align: center;
+	}
+
+	.pad {
+		padding: 0.6rem 0.7rem 0.75rem;
 	}
 
 	.quiet {

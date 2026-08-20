@@ -1,7 +1,10 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
 	import { session } from '$lib/agent/session.svelte';
+	import { ICON } from '$lib/icons';
 	import Prose from '$lib/components/Prose.svelte';
+	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 
 	/**
 	 * The part that survives the conversation.
@@ -93,61 +96,59 @@
 				.trim()
 		)
 	);
+
+	/** Hosted in another frame's tab group; that frame draws the header. */
+	let { bare = false }: { bare?: boolean } = $props();
 </script>
 
-<section class="panel">
-	<header>
-		<span class="co-eyebrow scope">resource</span>
+<PanelFrame {bare} label="memory" icon={ICON.memory} tone="memory">
+	{#snippet actions()}
+		<!-- Not a decoration: `resource` is the whole claim — this is not scoped to
+		     the thread, which is why it is still here tomorrow. -->
+		{#if loaded && configured}
+			<span class="co-eyebrow scope">resource</span>
+		{/if}
 		{#if filled}
 			<button class="co-eyebrow toggle" onclick={() => (open = !open)}
 				>{open ? 'hide' : 'read'}</button
 			>
 		{/if}
-	</header>
+	{/snippet}
 
 	{#if !loaded}
-		<p class="quiet">…</p>
+		<!-- A single character rather than an empty state: this resolves in one
+		     round trip, and a full teaching panel that flashes past is worse than
+		     nothing at all. -->
+		<p class="quiet pad">…</p>
 	{:else if !configured}
-		<p class="quiet">No database, so nothing survives a reload.</p>
+		<EmptyState
+			icon={ICON.memory}
+			tone="memory"
+			title="No store attached, so nothing survives"
+			note="Working memory needs somewhere to live. Without a database Colophon still answers, but every conversation starts from the same blank page — which is exactly the behaviour this panel exists to make visible."
+		/>
 	{:else if error}
-		<p class="err">{error}</p>
+		<p class="err pad">{error}</p>
 	{:else if !filled}
-		<p class="quiet">
-			Nothing learned yet. Colophon writes this itself as it works out what you care about — and it
-			outlives this conversation, so a new thread will still know.
-		</p>
+		<EmptyState
+			icon={ICON.memory}
+			tone="memory"
+			title="Nothing learned yet"
+			note="Colophon writes this itself as it works out what you care about. It is scoped to you rather than to this thread — so what lands here is still here in a conversation you have not started yet."
+		/>
 	{:else if open}
 		<div class="body"><Prose text={text ?? ''} /></div>
 	{:else}
-		<p class="quiet">
+		<p class="quiet pad">
 			A profile it wrote itself, carried into every new conversation.
 			{#if empty.length}
 				Still blank: {empty.join(', ').toLowerCase()}.
 			{/if}
 		</p>
 	{/if}
-</section>
+</PanelFrame>
 
 <style>
-	.panel {
-		display: flex;
-		flex-direction: column;
-		gap: 0.4rem;
-		min-height: 0;
-	}
-
-	header {
-		display: flex;
-		align-items: baseline;
-		gap: 0.5rem;
-		flex: none;
-	}
-	header > .co-eyebrow:first-child {
-		color: color-mix(in oklab, var(--co-memory) 75%, var(--muted-foreground));
-	}
-
-	/* Not a decoration: `resource` is the whole claim — this is not scoped to
-	   the thread, which is why it is still here tomorrow. */
 	.scope {
 		font-size: 0.5rem;
 		padding: 0 0.25rem;
@@ -157,15 +158,21 @@
 	}
 
 	.toggle {
-		margin-left: auto;
 		border: 0;
 		background: transparent;
-		padding: 0;
+		padding: 0 0.2rem;
 		cursor: pointer;
 		color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+		transition: color 150ms ease;
 	}
 	.toggle:hover {
 		color: var(--co-accent);
+	}
+
+	/* The frame draws no padding of its own, so anything that is not an empty
+	   state indents itself to the header's left edge. */
+	.pad {
+		padding: 0.6rem 0.7rem 0.75rem;
 	}
 
 	.quiet {
@@ -186,6 +193,7 @@
 	.body {
 		overflow-y: auto;
 		min-height: 0;
+		padding: 0.6rem 0.7rem 0.75rem;
 		/*
 			Capped, because this panel sits above three others in a fixed column.
 			Uncapped it grew to the height of the whole profile and pushed the

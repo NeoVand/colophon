@@ -1,6 +1,9 @@
 <script lang="ts">
 	import { session } from '$lib/agent/session.svelte';
 	import { apportion, bands, type Part } from '$lib/agent/context';
+	import { ICON } from '$lib/icons';
+	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
 
 	/**
 	 * What is actually in the window.
@@ -59,18 +62,19 @@
 	}
 </script>
 
-<section class="panel">
-	<header>
-		{#if ctx}
-			<span class="co-num meta">call {ctx.call} · {kb(ctx.bytes)}B</span>
-		{/if}
-	</header>
-
+<PanelFrame
+	label="context"
+	icon={ICON.context}
+	tone="memory"
+	readout={ctx ? `call ${ctx.call} · ${kb(ctx.bytes)}B` : undefined}
+>
 	{#if !ctx}
-		<p class="quiet">
-			Nothing sent yet. This is the literal request — read off the provider fetch, not from anything
-			the agent was asked to report.
-		</p>
+		<EmptyState
+			icon={ICON.context}
+			tone="memory"
+			title="Nothing sent yet"
+			note="This is the literal request, read off the provider's own fetch — not something the agent was asked to report about itself. The first call fills it, and the bands say what you are paying to re-send."
+		/>
 	{:else}
 		<div class="bar" role="img" aria-label="What the outgoing request is made of">
 			{#each merged as b (b.kind)}
@@ -110,29 +114,11 @@
 			</p>
 		{/if}
 	{/if}
-</section>
+</PanelFrame>
 
 <style>
-	.panel {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		min-height: 0;
-	}
-	.meta {
-		margin-left: auto;
-		font-size: 0.625rem;
-		color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
-	}
-
-	.quiet {
-		margin: 0;
-		font-size: 0.75rem;
-		line-height: 1.5;
-		color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
-		text-wrap: pretty;
-	}
-
+	/* The frame draws the header; each block below indents itself to the same
+	   left edge as the label above it. */
 	.bar {
 		display: flex;
 		height: 6px;
@@ -140,6 +126,7 @@
 		overflow: hidden;
 		background: var(--muted);
 		flex: none;
+		margin: 0.6rem 0.7rem 0.5rem;
 	}
 	.seg {
 		background: var(--tone);
@@ -149,7 +136,7 @@
 
 	.rows {
 		margin: 0;
-		padding: 0;
+		padding: 0 0.7rem;
 		list-style: none;
 		overflow-y: auto;
 		min-height: 0;
@@ -189,7 +176,8 @@
 
 	.caveat {
 		flex: none;
-		margin: 0.15rem 0 0;
+		margin: 0.25rem 0 0;
+		padding: 0 0.7rem 0.7rem;
 		font-size: 0.625rem;
 		line-height: 1.5;
 		color: color-mix(in oklab, var(--muted-foreground) 60%, transparent);
