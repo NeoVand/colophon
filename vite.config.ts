@@ -125,6 +125,25 @@ function mastraBrowserShims(): Plugin {
 }
 
 export default defineConfig({
+	/*
+	 * Honour `PORT`, because Vite does not.
+	 *
+	 * Vite takes its dev port from `--port` or from this config and ignores the
+	 * environment entirely, so a launcher that assigns a free port and passes it
+	 * as `PORT` was being silently overruled: the server bound 5173, the preview
+	 * opened the assigned port, and nothing was there. The alternative was a
+	 * hardcoded `--port 5180 --strictPort` in `.claude/launch.json`, which turns
+	 * every stray dev server into a hard failure — which is exactly how this was
+	 * found.
+	 *
+	 * Nothing here needs a fixed port: `ORIGIN` is only used as better-auth's
+	 * `baseURL`, and its session cookie is host-only, so localhost works on any
+	 * port. Undefined when `PORT` is unset, which leaves Vite's own default.
+	 */
+	server: {
+		port: process.env.PORT ? Number(process.env.PORT) : undefined
+	},
+
 	plugins: [
 		mastraBrowserShims(),
 		tailwindcss(),
