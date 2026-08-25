@@ -48,6 +48,8 @@
 				return '--co-memory';
 			case 'approval':
 				return '--co-approval';
+			case 'stage':
+				return e.state === 'failed' ? '--co-error' : '--co-subagent';
 			case 'tripwire':
 				return '--co-gate';
 			case 'error':
@@ -78,6 +80,21 @@
 				return `${e.name} · waiting on you`;
 			case 'context':
 				return `call ${e.call}${e.model ? ` · ${e.model}` : ''}`;
+			case 'stage':
+				return e.state === 'start'
+					? `${e.step} · started`
+					: `${e.step} · ${e.state}${e.ms ? ` in ${(e.ms / 1000).toFixed(1)}s` : ''}`;
+			/*
+			 * Neither reaches this panel — `session` keeps them off the timeline,
+			 * because a span describes work a row already describes. They are here
+			 * because the switch is exhaustive over the union, and that
+			 * exhaustiveness is what made the compiler point at this function the
+			 * moment the union grew.
+			 */
+			case 'span':
+				return `${e.span.kind} · ${e.span.name}`;
+			case 'trace':
+				return e.configured ? 'tracing on' : (e.reason ?? 'tracing off');
 			case 'tripwire':
 				return e.reason;
 			case 'done':

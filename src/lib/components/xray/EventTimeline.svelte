@@ -176,6 +176,28 @@
 						tone: '--co-approval'
 					});
 					break;
+				case 'stage':
+					/*
+					 * A pipeline stage, on the same timeline as everything else.
+					 *
+					 * Only the *end* of a stage gets a row. A start and a finish for
+					 * five stages is ten rows describing five things, and the finish is
+					 * the one carrying the duration — which is the whole reason to look
+					 * here rather than at the pipeline panel, where the stage is already
+					 * drawn as a mark that lights.
+					 */
+					if (event.state !== 'start') {
+						rows.push({
+							key: `sg${seq}`,
+							seq,
+							at,
+							kind: event.state === 'failed' ? 'error' : 'stage',
+							label: `stage · ${event.step}`,
+							detail: event.error ?? (event.ms ? `${(event.ms / 1000).toFixed(1)}s` : event.state),
+							tone: event.state === 'failed' ? '--co-error' : '--co-subagent'
+						});
+					}
+					break;
 				case 'tripwire':
 					rows.push({
 						key: `tw${seq}`,

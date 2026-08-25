@@ -45,8 +45,18 @@
 
 	let {
 		spans = [],
-		/** False when `COLOPHON_TRACING` is unset. The panel then says so instead of looking broken. */
-		configured = true,
+		/**
+		 * Whether the server is recording spans. The panel says so instead of
+		 * looking broken.
+		 *
+		 * Defaults to **false**, and the default is the point. It used to default
+		 * to true, and this panel was mounted with no props at all — so it
+		 * reported tracing as on and idle for months when it was simply not
+		 * wired to anything. A component that is handed nothing must not claim
+		 * the system is healthy; "nothing has been said to me" and "everything is
+		 * fine" are different, and only one of them is safe to guess.
+		 */
+		configured = false,
 		/** Why it is not configured, in the words of the setting that would fix it. */
 		reason = '',
 		/** True when the run outran the collector's per-run cap. */
@@ -142,11 +152,18 @@
 	{readout}
 >
 	{#if !configured}
+		<!--
+			"Not recording" rather than "off": before a run there is nothing to
+			record and the server has not been asked, which is a different fact from
+			tracing having been turned off — and the caller says which in `reason`.
+			Guessing either way is how this panel came to claim tracing was on and
+			idle while it was wired to nothing at all.
+		-->
 		<EmptyState
 			icon={ICON.trace}
 			tone="model"
-			title="Tracing is off"
-			note={reason || 'COLOPHON_TRACING is not set.'}
+			title="Not recording"
+			note={reason || 'No run yet, so the server has not said whether it is.'}
 		/>
 	{:else if !trace.rows.length}
 		<EmptyState icon={ICON.trace} tone="model" title="Nothing timed yet" />

@@ -56,9 +56,19 @@
 
 	interface Stage {
 		key: string;
-		/** `01`, `02`… Empty for the two terminals, which are not steps. */
+		/** `01`, `02`… Empty for the terminals and the loop row, which are not steps. */
 		index: string;
 		terminal: boolean;
+		/**
+		 * The row that says control goes back round.
+		 *
+		 * Only an agent has one. A rank-ordered drawing cannot draw a back edge,
+		 * and the loop is the single most important difference between an agent
+		 * and a pipeline — so it gets a row of its own rather than being left to
+		 * be inferred from a picture that looks exactly like a five-stage
+		 * workflow.
+		 */
+		loop: boolean;
 		/** True when any step in the stage is guarded by a predicate. */
 		conditional: boolean;
 		running: boolean;
@@ -96,15 +106,17 @@
 			.map((rank) => {
 				const row = [...byRank.get(rank)!].sort((a, b) => a.lane - b.lane);
 				const terminal = row.length === 1 && (row[0].kind === 'start' || row[0].kind === 'end');
-				if (!terminal) step += 1;
+				const loop = row.length === 1 && row[0].kind === 'loop';
+				if (!terminal && !loop) step += 1;
 
 				return {
 					// The rank is a Map key, so it is unique by construction — and a
 					// duplicate key does not merely misdraw, it throws and aborts the
 					// render, leaving the previous graph frozen on screen.
 					key: `rank-${rank}`,
-					index: terminal ? '' : String(step).padStart(2, '0'),
+					index: terminal || loop ? '' : String(step).padStart(2, '0'),
 					terminal,
+					loop,
 					conditional: row.some((n) => Boolean(n.when)),
 					running: row.some((n) => n.id === active),
 					nodes: row.map((node, i) => {
@@ -211,12 +223,18 @@
 					</div>
 				{/if}
 
-				<div class="stage" class:terminal={stage.terminal} class:running={stage.running}>
+				<div
+					class="stage"
+					class:terminal={stage.terminal}
+					class:loop={stage.loop}
+					class:running={stage.running}
+				>
 					<span class="tick co-num" aria-hidden="true">
-						{#if stage.terminal}<span class="pip"></span>{:else}{stage.index}{/if}
+						{#if stage.loop}↺{:else if stage.terminal}<span class="pip"
+							></span>{:else}{stage.index}{/if}
 					</span>
 
-					{#if stage.terminal}
+					{#if stage.terminal || stage.loop}
 						<span class="cap co-eyebrow">{stage.nodes[0].node.label}</span>
 					{:else}
 						<div class="lane">
@@ -326,6 +344,18 @@
 	.cap {
 		line-height: 1.475rem;
 		color: color-mix(in oklab, var(--muted-foreground) 70%, transparent);
+	}
+
+	/* The return. Lighter than a stage and unnumbered, because it is not one —
+	   it is the edge a column of ranks cannot draw, written out in words. */
+	.stage.loop .cap {
+		color: color-mix(in oklab, var(--muted-foreground) 52%, transparent);
+		text-transform: none;
+		letter-spacing: 0;
+	}
+	.stage.loop .tick {
+		font-size: 0.6875rem;
+		color: color-mix(in oklab, var(--muted-foreground) 52%, transparent);
 	}
 
 	.lane {

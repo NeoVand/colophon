@@ -52,3 +52,48 @@ Typst is the default authoring format — an agent writes it correctly far more
 often than LaTeX. Real LaTeX is kept for journal templates and compiles
 client-side via WASM (SwiftLaTeX / BusyTeX), because TeX Live does not fit in a
 250 MB serverless function.
+
+## 2026-08-25 — The graph draws whichever machine is running
+
+The graph panel drew the deep-research workflow's step graph, always — including
+during ordinary chat turns, which never execute that workflow. It lit nodes by
+matching `tool-call` names against workflow step ids, which cannot match. A
+correct picture of the wrong subject, and dead by construction in every normal
+run.
+
+The fix is not to pick one subject. **The panel draws the machine that is
+executing**: the pipeline while deep research is in flight, the agent loop the
+rest of the time. Both are readings of the live system — `/api/graph` returns
+`serializedStepGraph`, and the new `/api/agent/shape` returns what the built
+agent answers to `getModel()`, `getToolsForExecution()`, `listAgents()`,
+`listSkills()` and `getMemory()`. Neither is a diagram anyone maintains.
+
+An agent has no compiled topology — it is a loop, and the loop lives in the
+framework. So `agent-topology.ts` assembles the ranks, but every part is
+measured, and the back edge a rank-ordered drawing cannot express is written out
+as its own row: _back to the model, while it keeps calling tools_.
+
+## 2026-08-25 — Tracing is on unless it is turned off
+
+`COLOPHON_TRACING` used to be opt-in, on the argument that "no configuration, no
+spans" cannot surprise anyone. That was written when spans went into a module
+store and nothing read them. They are now streamed to the panel that exists to
+draw them and dropped when the run leaves the screen, so there is no
+accumulation to be surprised by — and what opt-in actually bought was a finished
+instrument that showed nothing until you found an undocumented environment
+variable. `COLOPHON_TRACING=off` remains, as a kill switch.
+
+## 2026-08-25 — The research pipeline counts its own tokens
+
+Measured, not assumed: a one-step workflow whose step calls `agent.generate()`
+finishes with `workflow-finish → output.usage` all zeros, having just spent 345
+tokens, and publishes no `workflow-step-output` chunks — so there is no nested
+agent feed to recover them from either. Mastra counts steps it runs itself; an
+agent called inside an `execute` body is opaque to it.
+
+The consequence was a spend panel reading "Nothing spent yet" after a
+two-minute paid run, which is a wrong readout rather than an empty one. Each
+agent call now reports its own `totalUsage` through a `meter` injected into
+`createResearchWorkflow` — the same pattern, and for the same reason, as the
+source registry — and `/api/research` sums them and replaces the engine's zeros.
+It steps aside if a later Mastra ever reports a real number.

@@ -211,3 +211,72 @@ describe('projectWorkflow', () => {
 		});
 	});
 });
+
+/**
+ * The papers a step's output names.
+ *
+ * This is the reading that was missing while the library panel said "Nothing
+ * retrieved yet" through a two-minute research run that searched, chose and
+ * read three papers. The pipeline's retrieval happens inside a step rather than
+ * as a tool call the model made, so a step's `output` is the only place those
+ * papers ever appear — and the projector was dropping the whole of it.
+ */
+describe('papers, read off a step result', () => {
+	const result = (output: unknown) => ({
+		type: 'workflow-step-result',
+		payload: { id: 'search', status: 'success', startedAt: 10, endedAt: 20, output }
+	});
+
+	it('takes candidates from a search step, without their abstracts', () => {
+		const event = projectWorkflow(
+			result({
+				found: [
+					{ id: '2401.00001', title: 'A paper', year: 2024, abstract: 'x'.repeat(600) },
+					{ id: '2401.00002', title: 'Another' }
+				]
+			})
+		);
+
+		expect(event).toMatchObject({
+			k: 'step-finish',
+			papers: [
+				{ id: '2401.00001', title: 'A paper', year: 2024, depth: 'listed' },
+				{ id: '2401.00002', title: 'Another', depth: 'listed' }
+			]
+		});
+		// Six hundred characters a row, across two dozen rows, to draw a list that
+		// shows none of them.
+		expect(JSON.stringify(event)).not.toContain('xxx');
+	});
+
+	it('counts a paper a reader opened as read', () => {
+		expect(
+			projectWorkflow(result({ notes: [{ arxivId: '2401.00003', notes: '…' }] }))
+		).toMatchObject({ papers: [{ id: '2401.00003', depth: 'read' }] });
+	});
+
+	it('marks what the writer proved it cited', () => {
+		// `cite` refuses anything that did not enter the run, so an id here is a
+		// paper the pipeline actually opened — cited implies read.
+		expect(projectWorkflow(result({ citedIds: ['2401.00004'] }))).toMatchObject({
+			papers: [{ id: '2401.00004', depth: 'read', cited: true }]
+		});
+	});
+
+	it('says nothing rather than nothing-shaped when a step names no papers', () => {
+		expect(projectWorkflow(result({ plan: { queries: ['a'] } }))).not.toHaveProperty('papers');
+	});
+
+	it('bounds what one step can push', () => {
+		const found = Array.from({ length: 200 }, (_, i) => ({ id: `id-${i}`, title: 't' }));
+		const event = projectWorkflow(result({ found })) as { papers?: unknown[] };
+		expect(event.papers).toHaveLength(60);
+	});
+
+	it('drops a row with no id rather than inventing one', () => {
+		// A duplicate or a blank in the library reads as a claim about the run.
+		expect(projectWorkflow(result({ found: [{ title: 'no id here' }] }))).not.toHaveProperty(
+			'papers'
+		);
+	});
+});

@@ -6,28 +6,30 @@ once. Neo had to point out that the book is nowhere near the last thing.
 
 ## The honest scoreboard
 
+_Rewritten 2026-08-25. The table below had gone stale in the worst direction —
+it reported four capabilities as absent that had shipped, which is the same
+class of wrong readout the audit is about, in a document rather than a panel._
+
 harnessXray ships **21 X-ray panels, 9 cockpit instruments, 10 top-level
-components and a 10-chapter book**. Colophon ships **5 panels and 6
-components**. It is roughly a third of the surface, and — worse — it is missing
-most of the features that would make it a _Mastra_ X-ray rather than a smaller
-harnessXray.
+components and a 10-chapter book**. Colophon ships **16 panels**, all of them
+mounted and driven from one session store.
 
 Mastra's own headline capabilities, and whether Colophon touches them:
 
-| Capability                             | Entry point                       | Colophon            |
-| -------------------------------------- | --------------------------------- | ------------------- |
-| Agents, tools, subagents               | `@mastra/core/agent`              | ✅ done             |
-| Memory, resource-scoped                | `@mastra/memory`                  | ✅ done             |
-| Output processors (refusal)            | `@mastra/core/processors`         | ✅ done             |
-| Human-in-the-loop approval             | `requireApproval`                 | ✅ done             |
-| **Workflows** — steps, branch, suspend | `@mastra/core/workflows`          | ❌ **none**         |
-| **MCP** — tools from outside           | `@mastra/core/mcp`, `@mastra/mcp` | ❌ **none**         |
-| **Skills**                             | `@mastra/core/skills`             | ❌ **none**         |
-| **Scorers** — measurement              | `@mastra/core/scores`             | ❌ **none**         |
-| **Observability / AI tracing**         | `@mastra/core/observability`      | ❌ **none**         |
-| Input processors                       | `@mastra/core/processors`         | ❌ none             |
-| Vector / semantic recall               | `@mastra/core/vector`             | ❌ none             |
-| Schedules                              | `@mastra/core/schedules`          | n/a — see CLAUDE.md |
+| Capability                             | Entry point                       | Colophon                                                                               |
+| -------------------------------------- | --------------------------------- | -------------------------------------------------------------------------------------- |
+| Agents, tools, subagents               | `@mastra/core/agent`              | ✅ done                                                                                |
+| Memory, resource-scoped                | `@mastra/memory`                  | ✅ done                                                                                |
+| Output processors (refusal)            | `@mastra/core/processors`         | ✅ done                                                                                |
+| Human-in-the-loop approval             | `requireApproval`                 | ✅ done                                                                                |
+| **Workflows** — steps, branch, suspend | `@mastra/core/workflows`          | ✅ done — run from the composer                                                        |
+| **MCP** — tools from outside           | `@mastra/core/mcp`, `@mastra/mcp` | ✅ attached                                                                            |
+| **Skills**                             | `@mastra/core/skills`             | ✅ attached                                                                            |
+| **Scorers** — measurement              | `@mastra/core/scores`             | ✅ attached                                                                            |
+| **Observability / AI tracing**         | `@mastra/core/observability`      | ⚠️ spans recorded and drawn; Mastra's own exporter still needs `@mastra/observability` |
+| Input processors                       | `@mastra/core/processors`         | ❌ none — the graph draws them the day there are any                                   |
+| Vector / semantic recall               | `@mastra/core/vector`             | ❌ none                                                                                |
+| Schedules                              | `@mastra/core/schedules`          | n/a — see CLAUDE.md                                                                    |
 
 `createWorkflow`, `createStep`, `cloneWorkflow`, `createSkill`, `wrapMastra`
 and `MCPServerBase` are all confirmed present in the installed package. None of
@@ -35,47 +37,36 @@ this is speculative.
 
 ## Order of work, and why
 
-**1. Workflows.** The single biggest gap, and it pays twice: Mastra's headline
-feature, and the thing that finally gives the X-ray a **graph** to draw.
-harnessXray's GraphView reads a real LangGraph topology; Mastra's equivalent is
-a workflow's step DAG. Deep research is genuinely a pipeline — scope, search,
-select, read in parallel, synthesise, verify, deliver — and today it is one
-agent loop with no structure to show. Suspend/resume is also the honest home
-for approval.
+_Items 1–7 have landed. What is left, in order:_
 
-**2. MCP.** Tools from outside the codebase, which is the point of the protocol
-and something harnessXray cannot do at all. Needs a UI to add a server, list
-what it exposes, and show those tools arriving in the tool panel alongside the
-built-ins.
+**1. The book.** Ten chapters of prose and no plates. Chalk-on-black house
+style — `docs/BOOK.md`. Plates go in `static/book/` and are committed, exactly
+as harnessXray does it: they are authored assets, not generated content, so this
+does **not** wait on blob storage. **Neo reviews every plate before it ships.**
 
-**3. The graph view.** Draws (1). Nodes light as steps commit.
+**2. A surface for digests and subscriptions.** They exist in the database, run
+on a daily cron, and have no UI at all — which is the same shape of gap the
+audit was about, seen from the other side: a feature that works and cannot be
+seen.
 
-**4. Skills.** `createSkill` — a named, reusable bundle of instructions and
-tools. harnessXray has a SkillsPanel; Colophon has nowhere for one.
+**3. Settings.** Bring-your-own-key, and the model picker (`model` in
+`+page.svelte` is bound to a sheet and reaches no request yet — the one binding
+of that kind left).
 
-**5. Scorers.** The counterpart to the delivery gate: **a scorer measures, a
-processor refuses.** Having both on screen is the clearest possible statement of
-a distinction that Mastra's own docs blur.
+**4. Typst / LaTeX authoring**, and the vault as a document store.
 
-**6. Observability.** Mastra emits AI tracing spans. Surfacing them gives a
-per-step latency and cost breakdown the chunk stream cannot.
+**5. Input processors.** The one Mastra headline still untouched. The graph
+already draws a rank for them, so the day one is configured it appears with no
+edit to the drawing.
 
-**7. Inspector.** Click an event, unfold its payload — decomposed and raw. The
-X-ray currently summarises everything and lets you see nothing.
+**6. Mastra's own tracing spans.** The hand-recorded trace is real and useful,
+but `@mastra/core` alone ships `NoOpObservability`. Installing
+`@mastra/observability` and passing an `Observability` to `new Mastra({...})`
+makes `attachTracing()` start filing Mastra's spans into the same store, beside
+the ones the endpoints record, with no other change.
 
-**8. Threads.** A history list. There is a "new thread" button and no way back
-to an old one, which quietly loses work.
-
-**9. Settings.** Bring-your-own-key, and the model picker.
-
-**10. Cockpit.** harnessXray's drawn-instrument mode. Last, because it is a
-second presentation of panels that must exist first.
-
-**11. The book.** Chapters and plates. Plates go in `static/book/` and are
-committed, exactly as harnessXray does it — they are authored assets, not
-generated content, so this does **not** wait on blob storage.
-
-**12. Typst / LaTeX authoring**, and the vault as a document store.
+**7. Cockpit.** harnessXray's drawn-instrument mode. Removed at Neo's call once;
+only worth revisiting if he asks.
 
 ## Standing traps
 

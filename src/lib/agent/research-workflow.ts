@@ -62,6 +62,29 @@ const Selection = z.object({
  */
 export interface ResearchDeps {
 	registry: SourceRegistry;
+	/**
+	 * Where this run's token spend is reported, because the engine does not
+	 * report it.
+	 *
+	 * Measured, not assumed: a throwaway one-step workflow whose step calls
+	 * `agent.generate()` finishes with
+	 *
+	 *     workflow-finish → output.usage = { inputTokens: 0, outputTokens: 0,
+	 *                                        totalTokens: 0, … }
+	 *
+	 * against a step that had just spent 345 tokens, and publishes no
+	 * `workflow-step-output` chunks at all — so there is no nested agent feed to
+	 * recover the numbers from either. Mastra counts tokens for steps it runs
+	 * itself; an agent called inside an `execute` body is opaque to it.
+	 *
+	 * That left the spend panel reading "Nothing spent yet" after a two-minute
+	 * paid research run, which is not an empty readout but a wrong one.
+	 *
+	 * So each call reports its own `totalUsage` — the sender's own number, in
+	 * Mastra's own shape — and the endpoint adds them up. Injected rather than
+	 * global for the same reason the registry is: two runs must not pool.
+	 */
+	meter?: (usage: unknown) => void;
 }
 
 function scopeAgent() {
@@ -121,17 +144,24 @@ Match length to substance. A thin literature deserves a short answer.`,
 
 /* ── the steps ────────────────────────────────────────────────────────────── */
 
-export function createResearchWorkflow({ registry }: ResearchDeps) {
+export function createResearchWorkflow({ registry, meter }: ResearchDeps) {
+	/** Reports a call's spend, and shrugs when nobody is counting. */
+	const count = (usage: unknown) => meter?.(usage);
+
 	const scope = createStep({
 		id: 'scope',
 		description: 'Turn the question into a few genuinely different searches.',
 		inputSchema: z.object({ question: z.string() }),
 		outputSchema: z.object({ question: z.string(), plan: Plan }),
 		execute: async ({ inputData }) => {
-			const { object } = await scopeAgent().generate(inputData.question, {
+			const result = await scopeAgent().generate(inputData.question, {
 				structuredOutput: { schema: Plan }
 			});
-			return { question: inputData.question, plan: object as z.infer<typeof Plan> };
+			count(result.totalUsage);
+			return {
+				question: inputData.question,
+				plan: result.object as z.infer<typeof Plan>
+			};
 		}
 	});
 
@@ -199,15 +229,16 @@ export function createResearchWorkflow({ registry }: ResearchDeps) {
 				.map((p) => `- ${p.id} — ${p.title}${p.year ? ` (${p.year})` : ''}\n  ${p.abstract}`)
 				.join('\n');
 
-			const { object } = await selectAgent().generate(
+			const result = await selectAgent().generate(
 				`Question: ${inputData.question}\n\nAngle: ${inputData.plan.angle}\n\nCandidates:\n${listing}`,
 				{ structuredOutput: { schema: Selection } }
 			);
+			count(result.totalUsage);
 
 			return {
 				question: inputData.question,
 				plan: inputData.plan,
-				selection: object as z.infer<typeof Selection>
+				selection: result.object as z.infer<typeof Selection>
 			};
 		}
 	});
@@ -237,6 +268,9 @@ export function createResearchWorkflow({ registry }: ResearchDeps) {
 						`Read arXiv:${arxivId} and report on it in the contracted form. ` +
 							`The question being answered is: ${inputData.question}`
 					);
+					// Each reader separately: this is the expensive step, and a total
+					// that quietly omitted it would understate the run several-fold.
+					count(result.totalUsage);
 					return { arxivId, notes: result.text ?? '' };
 				})
 			);
@@ -269,6 +303,7 @@ export function createResearchWorkflow({ registry }: ResearchDeps) {
 				`Question: ${inputData.question}\n\nNotes from the papers that were read:\n\n${notes}`,
 				{ maxSteps: 12 }
 			);
+			count(result.totalUsage);
 
 			const cited = registry.cited();
 			const body = result.text ?? '';

@@ -138,7 +138,17 @@
 						<Pane defaultSize={44} minSize={24}>
 							<PaneGroup direction="vertical" autoSaveId="co:live" class="group">
 								<Pane defaultSize={26} minSize={10} collapsible collapsedSize={6}>
-									<WorkflowPanel />
+									<!--
+										Mounted with no `events` for its whole life until now, so it
+										could only ever say "Nothing has run yet" — a finished panel
+										wired to nothing, which is this repo's signature failure. The
+										events come from the research stream; `running` is true only
+										while the pipeline is the thing in flight.
+									-->
+									<WorkflowPanel
+										events={session.workflow}
+										running={session.mode === 'research' && session.status === 'running'}
+									/>
 								</Pane>
 								<Divider direction="vertical" />
 								<Pane defaultSize={42} minSize={16}>
@@ -214,7 +224,23 @@
 										{:else if machine === 'skills'}<SkillsPanel bare />
 										{:else if machine === 'memory'}<MemoryPanel bare />
 										{:else if machine === 'mcp'}<McpPanel bare />
-										{:else}<TracePanel bare />{/if}
+										{:else}
+											<!--
+												Mounted with no `spans` for its whole life until now, and
+												defaulting `configured` to true — so it reported tracing as
+												on and idle when it was simply not wired. Both facts now
+												come off the run: the server records spans against its own
+												clock and streams them as they open and close, and says in
+												the same channel whether it is recording at all.
+											-->
+											<TracePanel
+												bare
+												spans={session.spans}
+												configured={session.tracing.configured}
+												reason={session.tracing.reason ?? ''}
+												truncated={session.tracing.truncated ?? false}
+											/>
+										{/if}
 									</PanelFrame>
 								</Pane>
 								<Divider direction="vertical" />

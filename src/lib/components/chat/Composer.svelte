@@ -121,7 +121,10 @@
 		draft = '';
 		// Height is set imperatively, so clearing the value does not reset it.
 		queueMicrotask(resize);
-		await session.send(prompt);
+		// The mode goes with the message. It used to go nowhere: the toggle set a
+		// chip and `session.send` only ever ran the chat agent, so `/api/research`
+		// — and the three panels that draw it — were reachable by no client code.
+		await session.send(prompt, mode);
 	}
 
 	function onKeydown(event: KeyboardEvent) {

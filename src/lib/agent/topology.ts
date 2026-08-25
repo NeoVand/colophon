@@ -25,7 +25,13 @@
  * unknown instead of a silently shorter graph.
  */
 
-export type NodeKind = 'start' | 'step' | 'end' | 'other';
+/**
+ * `loop` is not a stage anybody executes. It is the row that says control goes
+ * back round, which a rank-ordered drawing cannot otherwise express and which is
+ * the single most important fact about an agent as opposed to a pipeline. Only
+ * `agent-topology.ts` produces one; a workflow has no such edge.
+ */
+export type NodeKind = 'start' | 'step' | 'end' | 'other' | 'loop';
 
 export interface Node {
 	id: string;

@@ -69,8 +69,61 @@ function linkFor(p: Paperish, id: string): string | undefined {
 export function absorb(library: KnownPaper[], toolName: string | undefined, result: unknown): void {
 	if (!result || typeof result !== 'object') return;
 	const r = result as Record<string, unknown>;
+	const upsert = upserter(library);
 
-	const upsert = (p: Paperish, depth: 'listed' | 'read', cited = false) => {
+	switch (toolName) {
+		// `papers`, not `results` — see the note at the top of this file.
+		case 'search_papers':
+			if (Array.isArray(r.papers)) for (const row of r.papers as Paperish[]) upsert(row, 'listed');
+			return;
+
+		// Returns the paper itself, keyed by `arxivId`, with `chars` for the
+		// full length even when the excerpt was truncated. `edition: 'abstract'`
+		// means the HTML was unavailable and no full text actually arrived, so
+		// it does not count as read.
+		case 'fetch_paper':
+			upsert(r as Paperish, r.edition === 'abstract' ? 'listed' : 'read');
+			return;
+
+		// Carries its own depth, which is authoritative — it came from the
+		// registry rather than being inferred here.
+		case 'cite':
+			upsert(r as Paperish, r.depth === 'read' ? 'read' : 'listed', true);
+			return;
+	}
+}
+
+/**
+ * Fold the deep-research pipeline's papers into the same library.
+ *
+ * The chat agent's papers arrive as tool results; the pipeline's arrive on its
+ * step outputs, because its retrieval happens inside a step rather than as a
+ * call the model made. Two doors, one room — and deliberately the same `upsert`
+ * behind both, so "depth only ever increases" and "a paper met twice is one
+ * paper" hold however the paper got here.
+ *
+ * Before this the library panel said "Nothing retrieved yet" for the whole of a
+ * research run that had read three papers.
+ */
+export function absorbPapers(
+	library: KnownPaper[],
+	papers: readonly {
+		id: string;
+		title?: string;
+		year?: number;
+		depth: 'listed' | 'read';
+		cited?: boolean;
+	}[]
+): void {
+	const upsert = upserter(library);
+	for (const paper of papers) {
+		upsert({ id: paper.id, title: paper.title, year: paper.year }, paper.depth, paper.cited);
+	}
+}
+
+/** The one place a paper enters the library, whichever door it came through. */
+function upserter(library: KnownPaper[]) {
+	return (p: Paperish, depth: 'listed' | 'read', cited = false) => {
 		const id = p.arxivId ?? p.id ?? p.url;
 		if (!id) return;
 
@@ -99,25 +152,4 @@ export function absorb(library: KnownPaper[], toolName: string | undefined, resu
 			chars: p.chars
 		});
 	};
-
-	switch (toolName) {
-		// `papers`, not `results` — see the note at the top of this file.
-		case 'search_papers':
-			if (Array.isArray(r.papers)) for (const row of r.papers as Paperish[]) upsert(row, 'listed');
-			return;
-
-		// Returns the paper itself, keyed by `arxivId`, with `chars` for the
-		// full length even when the excerpt was truncated. `edition: 'abstract'`
-		// means the HTML was unavailable and no full text actually arrived, so
-		// it does not count as read.
-		case 'fetch_paper':
-			upsert(r as Paperish, r.edition === 'abstract' ? 'listed' : 'read');
-			return;
-
-		// Carries its own depth, which is authoritative — it came from the
-		// registry rather than being inferred here.
-		case 'cite':
-			upsert(r as Paperish, r.depth === 'read' ? 'read' : 'listed', true);
-			return;
-	}
 }

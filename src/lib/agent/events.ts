@@ -18,6 +18,9 @@
  * recorded fixtures without a network or a key.
  */
 
+import type { StepState } from './workflow-events';
+import type { TraceSpan } from './trace';
+
 /** One band of the outgoing request. Mirrors `Part` in `context.ts`. */
 export interface ContextPart {
 	kind: string;
@@ -86,12 +89,60 @@ export type ColophonEvent =
 			bytes: number;
 			parts: ContextPart[];
 	  }
+	/**
+	 * A stage of the deep-research pipeline started or ended.
+	 *
+	 * The second event `project()` never produces, for the same reason as
+	 * `context`: a research run is a *workflow*, so its chunks arrive at a
+	 * different endpoint and go through `projectWorkflow()` instead. They ride on
+	 * this union anyway because someone watching one run should have one timeline
+	 * to read rather than two — the pipeline's stages and the tool calls inside
+	 * them belong in the same column, in the order they happened.
+	 */
+	| { k: 'stage'; step: string; state: 'start' | StepState; ms?: number; error?: string }
+	/**
+	 * One span of the run's latency, as the server measured it.
+	 *
+	 * Streamed as spans open and close rather than posted as a bundle at the end,
+	 * so the flame chart fills in while the run is still going — which is the
+	 * only time a latency readout can change what you do. Both endpoints record
+	 * against **one clock**, their own: pairing a server start with a browser end
+	 * is how a trace ends up drawing a span that finished before it began.
+	 */
+	| { k: 'span'; span: TraceSpan }
+	/**
+	 * Whether spans are being recorded at all, and why not when they are not.
+	 *
+	 * Sent once before any work and once at the end. Without it the trace panel
+	 * has no way to tell "nothing happened yet" from "nothing is being recorded",
+	 * and it used to default to claiming the first — reporting tracing as on and
+	 * idle when it was simply not wired.
+	 */
+	| { k: 'trace'; configured: boolean; reason?: string; truncated?: boolean }
 	/** A guardrail aborted the run. */
 	| { k: 'tripwire'; reason: string; processor?: string }
 	/** The run finished. */
 	| { k: 'done'; usage: Usage; text?: string }
 	/** The run failed. */
 	| { k: 'error'; message: string };
+
+/**
+ * The events that describe the *instrument* rather than the run, and therefore
+ * ride on both endpoints' streams.
+ *
+ * Both `/api/agent/stream` and `/api/research` send these, because the trace
+ * panel is the same panel whichever machine is executing. Naming the overlap
+ * costs one line and buys the thing whose absence produced a real failure on a
+ * real run: the research reader was typed as `WorkflowEvent` alone, so a `trace`
+ * frame arrived at the workflow reducer, fell through to the branch that reads
+ * `event.usage.input`, and threw — which `consume` caught and reported as
+ *
+ *     Cannot read properties of undefined (reading 'input')
+ *
+ * in place of the answer. Two vocabularies on one channel is the right design —
+ * a reader should have one stream, not two — but only if both are declared.
+ */
+export type XrayEvent = Extract<ColophonEvent, { k: 'span' } | { k: 'trace' }>;
 
 const EMPTY_USAGE: Usage = { input: 0, output: 0, total: 0, reasoning: 0, cached: 0 };
 

@@ -44,6 +44,14 @@ you can read back and Mastra does not — but the response to that should have
 been to draw what Mastra _does_ expose, not to draw something else and leave it
 inert.
 
+**Resolved, 2026-08-25.** The panel now draws whichever machine is executing.
+A Mastra agent still has no compiled topology — it is a loop, and the loop lives
+in the framework — so `agent-topology.ts` arranges the ranks; but every part of
+what it arranges is measured off the built agent, and the back edge a
+rank-ordered drawing cannot express is written out as its own row rather than
+left to be inferred from a picture that looks exactly like a five-stage
+pipeline.
+
 ## Panel by panel
 
 | Panel            | Source                                 | Live in a chat run?                             |
@@ -61,9 +69,9 @@ inert.
 | Memory           | `/api/memory`                          | yes                                             |
 | Skills           | `session.turns` + `SKILL_CARDS`        | **was impossible** — skills were never attached |
 | MCP              | `/api/mcp`                             | listed servers the agent **could not call**     |
-| Graph            | `/api/graph`, a workflow               | **no** — draws something that never runs        |
-| Workflow         | `events` prop                          | **no** — mounted with no events, ever           |
-| Trace            | `spans` prop                           | **no** — mounted with no spans, ever            |
+| Graph            | `/api/agent/shape` or `/api/graph`     | yes — draws whichever machine is running        |
+| Workflow         | `events` prop, off the research stream | yes, during a research run                      |
+| Trace            | `spans` prop, streamed as they close   | yes                                             |
 
 ## Findings, and what was done
 
@@ -96,22 +104,56 @@ inert.
 suspended`. This is the error in Neo's screenshot.
 8. **The cockpit is removed**, at his call.
 
-### Open
+9. **The composer's "Deep research" mode was bound to nothing.** `/api/research`
+   was called by no client code, so toggling it moved a chip and changed nothing
+   — and that was the root of 10–12: the pipeline those three panels describe
+   was never run by the application. The mode now travels with the message into
+   `session.send`, which routes to the pipeline.
+10. **`WorkflowPanel` was mounted with no `events`** and could only ever say
+    "Nothing has run yet". It is mounted with the research stream's stages.
+11. **`TracePanel` was mounted with no `spans`**, and defaulted `configured` to
+    true — reporting tracing as on and idle when it was not wired at all. Both
+    endpoints now record spans against their own clock and stream them as they
+    open and close, and the panel's default is `false`: "nothing has been said
+    to me" and "everything is fine" are different, and only one is safe to guess.
+12. **The graph drew the wrong subject.** Resolved not by choosing between the
+    two subjects but by drawing **whichever machine is executing** — the
+    pipeline during a research run, the agent loop otherwise. The loop is read
+    from `/api/agent/shape`, which asks the built agent (`getModel()`,
+    `getToolsForExecution()`, `listAgents()`, `listSkills()`, `getMemory()`)
+    rather than assembling an answer from the parts it was built out of. Nodes
+    are keyed on the tool's real name, so `tool-call` events light them.
 
-9. **The graph draws the wrong subject.** See above. The fix is to draw the
-   agent — model, its real tools, its subagents, its memory — from the built
-   agent, and light it from `tool-call` events, which carry names that do match.
-10. **`WorkflowPanel` is mounted with no `events`** and can only ever say
-    "Nothing has run yet".
-11. **`TracePanel` is mounted with no `spans`**, and defaults `configured` to
-    true — so it reports tracing as on and idle when it is simply not wired.
-12. **The composer's "Deep research" mode is bound to nothing.** `/api/research`
-    is called by no client code. Toggling it changes a chip and nothing else,
-    which is also why 9–11 are dead: the workflow those three panels describe is
-    never run by the application.
+### Found by running it, after 9–12 were wired
 
-Items 9–12 are one knot. Wiring the research mode to `/api/research` makes the
-workflow and graph panels live and gives the trace something to collect.
+None of these had a failing test, and none would have had one: each is a claim
+the screen makes that only a real run can contradict.
+
+13. **The research stream carries two vocabularies on one channel** — the
+    pipeline's stages, and the trace frames both endpoints send. The client fed
+    both to the workflow reducer, so a `trace` frame fell through to the branch
+    reading `event.usage.input` and threw. `consume` caught it and put
+    `Cannot read properties of undefined (reading 'input')` on screen in place
+    of the answer.
+14. **The graph drew an agent with no memory, always.** A child's `onMount` runs
+    before its parent's, and the parent is where `session.restore()` mints the
+    thread — so the shape was fetched with `?thread=` empty, `getMemory()`
+    returned undefined, and the drawing said the agent could not remember. It
+    looked right only because a hot reload happened to re-run it with a thread
+    in hand.
+15. **The spend panel read "Nothing spent yet" after a two-minute paid run.**
+    Measured, not guessed: `workflow-finish` reports all-zero usage for a
+    pipeline whose steps call `agent.generate()`, and publishes no
+    `workflow-step-output` chunks to recover the numbers from. Each agent call
+    now reports its own `totalUsage` through a meter injected into the workflow.
+16. **The library sat on "Nothing retrieved yet"** through a run that had
+    searched, chosen and read three papers, because the pipeline's retrieval
+    happens inside a step rather than as a tool call the model made, and the
+    projector dropped the step's whole output.
+17. **The run panel printed `0` steps and `0` tools for a five-stage pipeline.**
+    Steps now count both machines' steps. Tools prints `—`: the pipeline's tool
+    calls are genuinely not on this wire, and `0` would be a claim rather than a
+    gap.
 
 ## On forking harnessXray instead
 

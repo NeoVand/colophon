@@ -76,18 +76,27 @@ const MAX_ATTRIBUTE_KEYS = 16;
 const MAX_ATTRIBUTE_CHARS = 240;
 
 /**
- * Tracing is opt-in.
+ * Tracing is on unless it is turned off. `COLOPHON_TRACING=off` turns it off.
  *
- * Not because it is expensive — it is a few hundred small objects — but because
- * "no configuration, no spans" is the only default that cannot surprise anyone,
- * and because a panel that shows a trace should be showing one that was
- * deliberately turned on rather than one that accumulated by accident.
+ * **This is a reversal, and the earlier reasoning is worth recording.** It used
+ * to be opt-in, on the argument that "no configuration, no spans" is the only
+ * default that cannot surprise anyone, and that a trace on screen should be one
+ * somebody deliberately turned on rather than one that accumulated by accident.
  *
- * `COLOPHON_TRACING=on` in `.env.local`.
+ * That argument was written when spans went into the module store below and
+ * nothing read them. They are now streamed to the panel that exists to draw
+ * them, as they open and close, and are dropped when the run leaves the screen —
+ * so there is no accumulation to be surprised by. What opt-in bought instead was
+ * a finished instrument that showed nothing until you found an undocumented
+ * environment variable, which is the same failure as not wiring it at all.
+ *
+ * The kill switch stays, because a serverless function that starts behaving
+ * oddly under load should have one thing to turn off before anyone reaches for
+ * the code.
  */
 export function isTracingConfigured(): boolean {
 	const value = env.COLOPHON_TRACING?.trim().toLowerCase();
-	return value === 'on' || value === '1' || value === 'true';
+	return !(value === 'off' || value === '0' || value === 'false');
 }
 
 export interface TracingState {
@@ -99,7 +108,7 @@ export interface TracingState {
 export function tracingState(): TracingState {
 	return isTracingConfigured()
 		? { configured: true }
-		: { configured: false, reason: 'COLOPHON_TRACING is not set, so no spans are being recorded.' };
+		: { configured: false, reason: 'COLOPHON_TRACING is off, so no spans are being recorded.' };
 }
 
 /** One run's spans, plus the one fact a bounded store owes its reader. */
@@ -116,7 +125,7 @@ export interface OpenSpan {
 	/** Open a span inside this one. */
 	child(options: StartOptions): OpenSpan;
 	/** Close it. Calling twice is harmless — the first end is the one that counts. */
-	end(options?: { attributes?: Record<string, unknown>; failed?: boolean }): void;
+	end(options?: EndOptions): void;
 }
 
 export interface StartOptions {
@@ -126,6 +135,28 @@ export interface StartOptions {
 	/** Only needed when the parent is not the span you called `child()` on. */
 	parentId?: string;
 	attributes?: Record<string, unknown>;
+	/**
+	 * When it really began, when that is not now.
+	 *
+	 * Two callers need it and both have a better clock than this module does. A
+	 * workflow chunk carries the engine's own `startedAt`, measured inside the
+	 * step rather than when the frame reached the endpoint. And an agent step is
+	 * opened lazily — on its first chunk, which is already some way into the
+	 * model call — so it is backdated to the previous step's end, where it
+	 * actually started. Without that the request latency before the first token,
+	 * which is most of what a slow model costs you, would be missing from every
+	 * step in the trace.
+	 *
+	 * Must come from the same clock as everything else in the run. Both do.
+	 */
+	startedAt?: number;
+}
+
+export interface EndOptions {
+	attributes?: Record<string, unknown>;
+	failed?: boolean;
+	/** When it really ended. Same rule and the same reason as `startedAt`. */
+	endedAt?: number;
 }
 
 export interface Recorder {
@@ -209,15 +240,17 @@ function trim(source: Record<string, unknown> | undefined): Record<string, unkno
 	return kept ? out : undefined;
 }
 
-function file(entry: Held, span: TraceSpan): void {
+/** True when the span was kept. False means the cap turned it away. */
+function file(entry: Held, span: TraceSpan): boolean {
 	// An update to a span already filed is not a new span, so it must not count
 	// against the cap — otherwise a long-running span that reports progress
 	// would evict the very children that explain it.
 	if (!entry.spans.has(span.id) && entry.spans.size >= MAX_SPANS_PER_RUN) {
 		entry.truncated = true;
-		return;
+		return false;
 	}
 	entry.spans.set(span.id, span);
+	return true;
 }
 
 /* ── recording by hand ────────────────────────────────────────────────────── */
@@ -253,10 +286,41 @@ function mintId(runId: string): string {
  * the whole reason the seam is a recorder rather than a bare function: the
  * endpoint writes the same six lines either way, with no `if` around them.
  */
-export function recorderFor(runId: string): Recorder {
+export function recorderFor(
+	runId: string,
+	{
+		onSpan
+	}: {
+		/**
+		 * Called every time a span is filed — once when it opens, once when it
+		 * closes.
+		 *
+		 * This is what lets an endpoint stream the trace instead of posting it as
+		 * a bundle at the end. A latency readout that only arrives once the run is
+		 * over is a receipt; one that fills in while the run is going is an
+		 * instrument, and the difference matters most on exactly the runs worth
+		 * tracing, which are the slow ones.
+		 *
+		 * The object handed over is the live span, so a listener that intends to
+		 * keep it must copy it — `send`ing it as JSON does, which is why the call
+		 * sites here do not.
+		 */
+		onSpan?: (span: TraceSpan) => void;
+	} = {}
+): Recorder {
 	if (!isTracingConfigured()) return NO_OP_RECORDER;
 
 	const entry = held(runId);
+
+	/** Never let a listener's throw reach the run. Observation must not break work. */
+	const announce = (span: TraceSpan) => {
+		if (!onSpan) return;
+		try {
+			onSpan(span);
+		} catch {
+			// The caller did not ask to be observed.
+		}
+	};
 
 	const open = (options: StartOptions, parentId?: string): OpenSpan => {
 		const id = mintId(runId);
@@ -265,10 +329,10 @@ export function recorderFor(runId: string): Recorder {
 			parentId: options.parentId ?? parentId,
 			name: options.name,
 			kind: options.kind,
-			startedAt: Date.now(),
+			startedAt: options.startedAt ?? Date.now(),
 			attributes: trim(options.attributes)
 		};
-		file(entry, span);
+		if (file(entry, span)) announce(span);
 
 		let closed = false;
 		return {
@@ -280,12 +344,12 @@ export function recorderFor(runId: string): Recorder {
 				// reason that has nothing to do with the work.
 				if (closed) return;
 				closed = true;
-				span.endedAt = Date.now();
+				span.endedAt = result?.endedAt ?? Date.now();
 				if (result?.failed) span.failed = true;
 				if (result?.attributes) {
 					span.attributes = trim({ ...(span.attributes ?? {}), ...result.attributes });
 				}
-				file(entry, span);
+				if (file(entry, span)) announce(span);
 			}
 		};
 	};
@@ -295,7 +359,8 @@ export function recorderFor(runId: string): Recorder {
 		start: (options) => open(options),
 		record: (span) => {
 			if (!span?.id || !Number.isFinite(span.startedAt)) return;
-			file(entry, { ...span, attributes: trim(span.attributes) });
+			const copy = { ...span, attributes: trim(span.attributes) };
+			if (file(entry, copy)) announce(copy);
 		},
 		spans: () => [...entry.spans.values()]
 	};

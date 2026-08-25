@@ -231,6 +231,45 @@ Updated as milestones land. After a context compaction, read this first.
     question: 0.5 GB holds about 300 images before the vault has room for
     nothing else. Hence the 64 MB cap and the interface.
 
+- **2026-08-25** — deep research wired end to end, and four dead instruments
+  made live. The audit's items 9–12 were one knot: `/api/research` was called
+  by no client code, so the workflow, graph and trace panels described a
+  pipeline the application never ran.
+
+  The composer's mode now reaches `session.send`, which routes to the pipeline;
+  `WorkflowPanel` is mounted with its events, `TracePanel` with real spans, and
+  **the graph draws whichever machine is executing** — the pipeline during a
+  research run, the agent loop otherwise, read from a new `/api/agent/shape`
+  that asks the built agent what it has. Verified on a real 1m 40s run: five
+  stages lighting in turn, twenty-four papers in the library with the three the
+  writer cited marked as such, 89,479 tokens on the spend bar.
+
+  **Four bugs, every one found by running it rather than by testing it:**
+  - The research stream carries two vocabularies on one channel — the
+    pipeline's stages and the trace — and the client fed both to the workflow
+    reducer. A `trace` frame fell through to the branch reading
+    `event.usage.input` and threw, and `consume` put
+    `Cannot read properties of undefined (reading 'input')` on screen in place
+    of the answer.
+  - The graph drew an agent with no memory, always. A child's `onMount` runs
+    before its parent's, and the parent is where `session.restore()` mints the
+    thread — so the shape was fetched with `?thread=` empty and `getMemory()`
+    returned undefined. An `$effect` on the thread replaces the mount.
+  - **`workflow-finish` reports all-zero token usage** for a pipeline whose
+    steps call `agent.generate()`, and publishes no `workflow-step-output`
+    chunks to recover them from. Measured against a throwaway one-step workflow
+    that had just spent 345 tokens. The spend panel read "Nothing spent yet"
+    after a two-minute paid run. Each agent call now reports its own
+    `totalUsage` through a meter injected into the workflow.
+  - The library sat on "Nothing retrieved yet" through a run that read three
+    papers, because the pipeline's retrieval happens inside a step rather than
+    as a tool call, and the projector dropped the step's whole output.
+
+  Also: tracing flipped from opt-in to on-unless-off, `TracePanel` no longer
+  defaults to claiming it is configured, and the run panel prints `—` for tools
+  during a research turn rather than `0` — the pipeline's tool calls are not on
+  this wire, and zero would be a claim rather than a gap.
+
 ## Still needs Neo
 
 - **R2 bucket** — images are in Postgres as a stopgap behind a 64 MB cap
