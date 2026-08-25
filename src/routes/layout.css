@@ -391,6 +391,26 @@
 	.co-prose a:hover {
 		text-decoration-color: var(--co-accent);
 	}
+	/*
+		A figure the agent embedded.
+
+		Blocked rather than inline: an extracted figure is evidence and the reader
+		is meant to look at it, and an image sharing a line with prose is a
+		postage stamp. Bounded by height as well as width so a tall schematic
+		cannot take a screen and a half of a conversation — the caption sits in
+		`alt`, which is what a screen reader gets and what shows if the store has
+		lost the file.
+	*/
+	.co-prose img {
+		display: block;
+		max-width: 100%;
+		max-height: 22rem;
+		width: auto;
+		margin: 0.6rem 0;
+		border: 1px solid color-mix(in oklab, var(--border) 70%, transparent);
+		border-radius: 3px;
+		background: var(--muted);
+	}
 	.co-prose code {
 		font-family: var(--font-mono);
 		font-size: 0.85em;

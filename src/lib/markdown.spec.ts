@@ -151,3 +151,88 @@ describe('toPlainText', () => {
 		expect(text).not.toMatch(/\*\*|`|^#|\]\(/m);
 	});
 });
+
+/**
+ * Figures the agent embedded.
+ *
+ * The app tells the model — in its instructions and in both figure tools'
+ * descriptions — to embed a result with `![caption](path)`. It did, and the
+ * renderer had no image rule at all, so a run that pulled six real figures out
+ * of a paper printed six lines of literal markdown into the conversation. The
+ * app was asking for something it could not display.
+ */
+describe('figures', () => {
+	it('renders one from this app’s own store', () => {
+		const html = renderMarkdown('![Figure 1 from arXiv:2404.14082](/figures/2404.14082-fig1.png)');
+		expect(html).toContain('<img src="/figures/2404.14082-fig1.png"');
+		expect(html).toContain('alt="Figure 1 from arXiv:2404.14082"');
+		expect(html).toContain('loading="lazy"');
+	});
+
+	it('refuses a remote source', () => {
+		/*
+		 * The one rule here worth arguing about. An <img> is a request the
+		 * reader's browser makes without being asked, and this text is written by
+		 * a model out of paper abstracts — a remote source is a tracking pixel at
+		 * best and a way to put text into someone else's logs at worst. Literal
+		 * markdown is ugly and cannot hurt anyone.
+		 */
+		const html = renderMarkdown('![x](https://evil.example/pixel.png)');
+		expect(html).not.toContain('<img');
+		// And not a link either. Declining the image and then linking the same
+		// address is a detour rather than a refusal — and it used to render as a
+		// stray `!` in front of the link, which was the tell.
+		expect(html).not.toContain('<a ');
+		expect(html).toContain('![x](https://evil.example/pixel.png)');
+	});
+
+	it.each([
+		'![x](/figures/../../etc/passwd)',
+		'![x](javascript:alert(1))',
+		'![x](data:image/svg+xml;base64,AAAA)',
+		'![x](/other/thing.png)'
+	])('refuses %s', (source) => {
+		expect(renderMarkdown(source)).not.toContain('<img');
+	});
+
+	it('cannot break out of the attribute it lands in', () => {
+		// The character class does this work: no quote, angle bracket or space
+		// can reach the src, so this is refused outright. It then renders as
+		// escaped text — which still contains the letters `onerror=`, and that is
+		// not a finding: the property that matters is that no tag was built and
+		// no quote survived unescaped.
+		const html = renderMarkdown('![x](/figures/a"onerror="alert(1).png)');
+		expect(html).not.toContain('<img');
+		expect(html).not.toContain('"onerror');
+		expect(html).toContain('&quot;onerror');
+	});
+
+	it('escapes the caption, which is model-written text', () => {
+		const html = renderMarkdown('![<script>alert(1)</script>](/figures/a.png)');
+		expect(html).not.toContain('<script>');
+		expect(html).toContain('&lt;script&gt;');
+	});
+
+	it('does not leave a stray ! by letting the link rule run first', () => {
+		// `![alt](src)` contains `[alt](src)`. A link rule running first eats the
+		// inside and leaves the bang behind.
+		const html = renderMarkdown('![cap](/figures/a.png)');
+		expect(html).not.toContain('!<');
+		expect(html).not.toContain('<a ');
+	});
+
+	it('still renders an ordinary link beside a figure', () => {
+		const html = renderMarkdown('![cap](/figures/a.png) and [paper](https://arxiv.org/abs/1)');
+		expect(html).toContain('<img');
+		expect(html).toContain('<a href="https://arxiv.org/abs/1"');
+	});
+
+	it('renders the caption instead of a picture where a relative path cannot resolve', () => {
+		// The email. A broken image icon in someone's inbox is worse than the
+		// words the figure was captioned with.
+		const html = renderMarkdown('![Figure 1](/figures/a.png)', {}, { images: false });
+		expect(html).not.toContain('<img');
+		expect(html).toContain('Figure 1');
+		expect(html).not.toContain('![');
+	});
+});
