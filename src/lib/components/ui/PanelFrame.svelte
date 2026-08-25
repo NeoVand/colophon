@@ -13,6 +13,8 @@
 <script lang="ts">
 	import type { Snippet } from 'svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
+	import Menu from './Menu.svelte';
+	import { fitTabs } from '$lib/xray/tabs';
 
 	/**
 	 * The frame every panel in the X-ray wears.
@@ -67,6 +69,58 @@
 		children: Snippet;
 	} = $props();
 
+	/* ── the tab strip, which admits when it does not fit ──────────────────────
+	 *
+	 * The harness panel carries seven tabs. On a pane dragged narrow, `mcp` and
+	 * `trace` simply ran off the right edge and were unreachable — and nothing
+	 * said so, which is the same failure as a panel wired to nothing: a control
+	 * that is silently absent.
+	 *
+	 * Two obvious escapes are both wrong here. Horizontal scrolling hides the
+	 * overflow behind a gesture nobody makes on a desktop instrument, and
+	 * dropping to icons-only throws away the labels that make an unfamiliar
+	 * panel findable. So: show what fits, and put the rest behind one `⋯` that
+	 * exists only when something is actually hidden. The arithmetic — including
+	 * why the active tab is never the one hidden — is in `$lib/xray/tabs`, where
+	 * it can be tested; this file only measures and draws.
+	 *
+	 * A hidden twin of the strip supplies the natural widths, because the
+	 * rendered strip cannot: its width is already the answer.
+	 *
+	 * The widths update through `bind:clientWidth`, which is a `ResizeObserver`.
+	 * Worth knowing when verifying: the in-app preview browser does not deliver
+	 * ResizeObserver callbacks at all — not even for a direct style change — so
+	 * dragging a divider there will not reflow the strip. A reload at the new
+	 * width measures correctly, and a real browser needs neither.
+	 */
+	let stripW = $state(0);
+	/** Natural widths in `tabs` order, read off the measuring twin. */
+	let natural = $state<number[]>([]);
+	let moreW = $state(0);
+
+	/** Matches the strip's own `gap`, in px. */
+	const GAP = 2;
+
+	const fit = $derived(
+		fitTabs(tabs, {
+			widths: natural,
+			available: stripW,
+			moreWidth: moreW,
+			gap: GAP,
+			activeIndex: tabs.findIndex((t) => t.id === active)
+		})
+	);
+
+	const overflow = $derived(
+		fit.hidden.map((t) => ({
+			id: t.id,
+			label: t.label,
+			icon: t.icon,
+			selected: active === t.id,
+			onselect: () => (active = t.id)
+		}))
+	);
+
 	// A panel given tabs but no chosen one shows the first, rather than nothing.
 	$effect.pre(() => {
 		if (tabs.length && !tabs.some((t) => t.id === active)) active = tabs[0].id;
@@ -82,22 +136,49 @@
 			<span class="co-eyebrow name">{label}</span>
 
 			{#if tabs.length}
-				<div class="tabs" role="tablist" aria-label={label}>
-					{#each tabs as tab (tab.id)}
-						<button
-							role="tab"
-							aria-selected={active === tab.id}
-							class="tab co-eyebrow"
-							class:on={active === tab.id}
-							onclick={() => (active = tab.id)}
-						>
-							{tab.label}{#if tab.count}<span class="co-num count">{tab.count}</span>{/if}
-						</button>
-					{/each}
+				<div class="strip" bind:clientWidth={stripW}>
+					<div class="tabs" role="tablist" aria-label={label}>
+						{#each fit.shown as tab (tab.id)}
+							<button
+								role="tab"
+								aria-selected={active === tab.id}
+								class="tab co-eyebrow"
+								class:on={active === tab.id}
+								onclick={() => (active = tab.id)}
+							>
+								{tab.label}{#if tab.count}<span class="co-num count">{tab.count}</span>{/if}
+							</button>
+						{/each}
+
+						{#if overflow.length}
+							<Menu items={overflow} align="start">
+								{#snippet trigger()}
+									<span class="co-eyebrow more" title="{overflow.length} more">⋯</span>
+								{/snippet}
+							</Menu>
+						{/if}
+					</div>
+
+					<!--
+						The measuring twin: the same strip at its natural width, taken out
+						of flow and hidden from everything that reads the page. It is what
+						`fit` is computed from — the rendered strip cannot be measured for
+						this, because its width is already the answer.
+					-->
+					<div class="ghost" aria-hidden="true">
+						{#each tabs as tab, i (tab.id)}
+							<span class="tab co-eyebrow" bind:clientWidth={natural[i]}>
+								{tab.label}{#if tab.count}<span class="co-num count">{tab.count}</span>{/if}
+							</span>
+						{/each}
+						<span class="co-eyebrow more" bind:clientWidth={moreW}>⋯</span>
+					</div>
 				</div>
 			{/if}
 
-			<div class="spacer"></div>
+			<!-- The strip already fills the gap when there are tabs; a second
+			     spacer beside it would halve the room they are measured against. -->
+			{#if !tabs.length}<div class="spacer"></div>{/if}
 			{#if readout}<span class="co-num readout">{readout}</span>{/if}
 			{#if actions}<div class="actions">{@render actions()}</div>{/if}
 		</header>
@@ -136,15 +217,63 @@
 		color: var(--tone);
 	}
 
+	/*
+		The strip is the header's spacer, and that is what makes the measurement
+		stable rather than circular.
+	
+		Sized to *fill* the room left over — `flex: 1 1 auto` — so `stripW` is the
+		space available to tabs, not the width of the tabs currently shown. Sized
+		to its content instead, the two chase each other: hiding a tab narrows the
+		strip, which narrows the budget, which hides another. Shipped that way for
+		one frame and the events panel collapsed to a bare `⋯` with all three tabs
+		in the menu.
+	*/
+	.strip {
+		position: relative;
+		flex: 1 1 auto;
+		min-width: 0;
+		margin-left: 0.5rem;
+	}
+
 	.tabs {
 		display: flex;
 		align-items: center;
-		gap: 0.1rem;
-		margin-left: 0.5rem;
+		gap: 2px;
+	}
+
+	/* Out of flow, unmeasured by the layout, unreadable by a screen reader — but
+	   still laid out, which is the whole point: it is the only place the tabs'
+	   natural widths exist. */
+	.ghost {
+		position: absolute;
+		top: 0;
+		left: 0;
+		display: flex;
+		align-items: center;
+		gap: 2px;
+		visibility: hidden;
+		pointer-events: none;
+		white-space: nowrap;
+	}
+
+	.more {
+		display: inline-block;
+		padding: 0 0.15rem;
+		color: color-mix(in oklab, var(--muted-foreground) 55%, transparent);
+		line-height: 1;
+	}
+	/* `:global` wraps the whole sequence because the hover target is `Menu`'s own
+	   button, which Svelte does not stamp with this file's scoping hash — and a
+	   `:global()` in the middle of a selector is not allowed. */
+	:global(.strip .trigger:hover .more),
+	:global(.strip .trigger.on .more) {
+		color: var(--tone);
 	}
 	.tab {
 		display: inline-flex;
 		align-items: baseline;
+		flex: none;
+		white-space: nowrap;
 		gap: 0.25rem;
 		border: 0;
 		background: transparent;

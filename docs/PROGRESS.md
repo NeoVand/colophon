@@ -270,6 +270,38 @@ Updated as milestones land. After a context compaction, read this first.
   during a research turn rather than `0` — the pipeline's tool calls are not on
   this wire, and zero would be a claim rather than a gap.
 
+- **2026-08-25** — the X-ray measured against harnessXray, panel by panel, after
+  Neo's note that the context breakdown was thin and the event sidebar "just
+  terrible".
+
+  **Events open in place.** The payload expands under the row that names it,
+  with the same decomposed/raw pair, instead of a sheet over the app behind a
+  blurred scrim. `Inspector.svelte` and the sheet are gone.
+
+  **The context panel gained the three things that made harnessXray's worth
+  having**: rows that open onto the actual piece, a raw view of the whole body,
+  and a pager across every model call in the turn drawn as one bar per call to
+  scale. Measured on a real run — 5,643 → 7,924 → 9,065 → 9,472 → 9,574 tokens
+  across five calls, 97% of the last a cache hit. Also grouped into system /
+  tool schemas / messages, rows in request order with a share bar rather than
+  sorted by size, and a gauge against the model's input window.
+
+  **Figures render in the timeline.** `extract_figures` returning `{ count: 6 }`
+  is a true summary and a useless one. Verified against arXiv:2404.14082.
+
+  **A third bug, found by looking**: the harness panel's seven tabs ran off the
+  edge of a narrow pane and `mcp` and `trace` were unreachable, 72px past the
+  header, with nothing saying so — the audit's failure in a new costume. The
+  strip now shows what fits behind a `⋯`, and never hides the tab you are on.
+
+  Two things worth keeping:
+  - The in-app preview browser delivers **no `ResizeObserver` callbacks**, not
+    even for a direct style change. Anything measured with `bind:clientWidth`
+    cannot be seen to reflow there; reload at the new width instead.
+  - `sizeOf` counts a string as its own length, not its JSON length, so a
+    piece's `chars` and its `text.length` agree for strings and differ for
+    objects. Asserted in the tests so nobody "fixes" it into agreement.
+
 ## Still needs Neo
 
 - **R2 bucket** — images are in Postgres as a stopgap behind a 64 MB cap
