@@ -49,6 +49,11 @@ export interface Part {
 	 * keyed list of them throws `each_key_duplicate` — which does not merely
 	 * misdraw, it aborts the render and leaves whatever was on screen before,
 	 * so the panel silently shows its own empty state during a live run.
+	 *
+	 * Deterministic from the body, which is load-bearing: the light
+	 * decomposition that rides the stream and the full one the context endpoint
+	 * serves are two runs of this function over the same bytes, and the panel
+	 * matches a fetched piece to a streamed row by this id.
 	 */
 	id: string;
 	kind: PartKind;
@@ -60,6 +65,33 @@ export interface Part {
 	share: number;
 	/** Billed input tokens attributed to this row, once `apportion` has run. */
 	tokens?: number;
+	/**
+	 * The piece itself, present only when it was asked for.
+	 *
+	 * Off by default and that is deliberate. Every row's text together *is* the
+	 * request, so a decomposition carrying text is the request sent twice — on a
+	 * twelve-call research turn that is megabytes pushed to the browser to draw
+	 * a list of labels. The stream sends the light version; `/api/context` reads
+	 * the same captured body again, with text, for the one call on screen.
+	 */
+	text?: string;
+	/** Characters dropped from `text` by the cap. Absent when nothing was cut. */
+	clipped?: number;
+}
+
+/**
+ * The three bands a reader actually asks about.
+ *
+ * Not a fourth field on the wire — it is a pure function of `kind`, and a
+ * derived value that travels is a derived value that can arrive disagreeing
+ * with what it was derived from.
+ */
+export type PartGroup = 'system' | 'tools' | 'messages';
+
+export function groupOf(kind: PartKind): PartGroup {
+	if (kind === 'system') return 'system';
+	if (kind === 'tool-schema') return 'tools';
+	return 'messages';
 }
 
 export interface Decomposition {
@@ -88,6 +120,52 @@ function textOf(content: unknown): number {
 	}, 0);
 }
 
+/**
+ * The same content, as the string a person reads.
+ *
+ * Deliberately a second function rather than `textOf` returning a string that
+ * gets measured: the sizes are computed on every request and the strings only
+ * when someone asks, and a shared implementation would tempt the light path
+ * into building megabytes it then throws away.
+ */
+function stringOf(content: unknown): string {
+	if (typeof content === 'string') return content;
+	if (!Array.isArray(content)) return content === undefined ? '' : pretty(content);
+	return content
+		.map((part) => {
+			const p = part as { text?: unknown };
+			return typeof p?.text === 'string' ? p.text : pretty(part);
+		})
+		.join('\n');
+}
+
+/** JSON a reader can scan, falling back to a description rather than throwing. */
+function pretty(value: unknown): string {
+	if (value === undefined || value === null) return '';
+	if (typeof value === 'string') return value;
+	try {
+		return JSON.stringify(value, null, 2) ?? String(value);
+	} catch {
+		return '[unserialisable]';
+	}
+}
+
+/**
+ * How much of one piece the endpoint will hand over.
+ *
+ * A fetched paper's tool result is a couple of hundred thousand characters, and
+ * a row that opened onto all of it would be a scroll with no bottom. Twenty
+ * thousand is several screens — enough to see what the thing *is*, which is the
+ * question a reader has here — and the row says how much was cut rather than
+ * ending mid-word and letting you assume that was all of it.
+ */
+export const PIECE_TEXT_LIMIT = 20_000;
+
+function clip(text: string): { text: string; clipped?: number } {
+	if (text.length <= PIECE_TEXT_LIMIT) return { text };
+	return { text: text.slice(0, PIECE_TEXT_LIMIT), clipped: text.length - PIECE_TEXT_LIMIT };
+}
+
 interface Item {
 	role?: string;
 	type?: string;
@@ -105,17 +183,33 @@ interface Item {
  * thing most often forgotten: eight tools with rich descriptions is a fixed tax
  * on every call, paid whether or not any of them is used.
  */
-export function decompose(body: unknown): Decomposition {
+export function decompose(body: unknown, { text = false } = {}): Decomposition {
 	const b = (body ?? {}) as { model?: string; input?: unknown; tools?: unknown };
 	const parts: Part[] = [];
 
 	let n = 0;
-	const add = (part: Omit<Part, 'id' | 'share'>) =>
-		parts.push({ ...part, id: `p${n++}`, share: 0 });
+	/**
+	 * `source` is a thunk, not a string.
+	 *
+	 * The light path — every request, on every call — must not pay to build a
+	 * two-hundred-kilobyte string it will immediately discard. Passing the work
+	 * rather than the result means the only decompositions that stringify
+	 * anything are the ones somebody asked to read.
+	 */
+	const add = (part: Omit<Part, 'id' | 'share' | 'text' | 'clipped'>, source?: () => string) =>
+		parts.push({
+			...part,
+			id: `p${n++}`,
+			share: 0,
+			...(text && source ? clip(source()) : {})
+		});
 
 	if (Array.isArray(b.tools)) {
 		for (const tool of b.tools as { name?: string }[]) {
-			add({ kind: 'tool-schema', label: `${tool?.name ?? 'tool'} — schema`, chars: sizeOf(tool) });
+			add(
+				{ kind: 'tool-schema', label: `${tool?.name ?? 'tool'} — schema`, chars: sizeOf(tool) },
+				() => pretty(tool)
+			);
 		}
 	}
 
@@ -163,23 +257,30 @@ export function decompose(body: unknown): Decomposition {
 				const content = typeof item.content === 'string' ? item.content : '';
 				const isMemory = content.includes('Reader profile');
 				systemN++;
-				add({
-					kind: 'system',
-					label: isMemory
-						? 'working memory'
-						: systemN > 1
-							? `system prompt ${systemN}`
-							: 'system prompt',
-					chars: textOf(item.content)
-				});
+				add(
+					{
+						kind: 'system',
+						label: isMemory
+							? 'working memory'
+							: systemN > 1
+								? `system prompt ${systemN}`
+								: 'system prompt',
+						chars: textOf(item.content)
+					},
+					() => stringOf(item.content)
+				);
 				continue;
 			}
 			if (item.role === 'user') {
-				add({ kind: 'user', label: `your turn ${++userN}`, chars: textOf(item.content) });
+				add({ kind: 'user', label: `your turn ${++userN}`, chars: textOf(item.content) }, () =>
+					stringOf(item.content)
+				);
 				continue;
 			}
 			if (item.role === 'assistant') {
-				add({ kind: 'assistant', label: 'answer', chars: textOf(item.content) });
+				add({ kind: 'assistant', label: 'answer', chars: textOf(item.content) }, () =>
+					stringOf(item.content)
+				);
 				continue;
 			}
 
@@ -187,30 +288,43 @@ export function decompose(body: unknown): Decomposition {
 
 			switch (item.type) {
 				case 'function_call':
-					add({
-						kind: 'tool-call',
-						label: `${item.name ?? 'tool'} — call`,
-						chars: sizeOf(item.arguments)
-					});
+					add(
+						{
+							kind: 'tool-call',
+							label: `${item.name ?? 'tool'} — call`,
+							chars: sizeOf(item.arguments)
+						},
+						() => pretty(item.arguments)
+					);
 					break;
 				case 'function_call_output':
-					add({
-						kind: 'tool-result',
-						label: `${(callId && nameOf.get(callId)) ?? 'tool'} — result`,
-						chars: sizeOf(item.output)
-					});
+					add(
+						{
+							kind: 'tool-result',
+							label: `${(callId && nameOf.get(callId)) ?? 'tool'} — result`,
+							chars: sizeOf(item.output)
+						},
+						() => pretty(item.output)
+					);
 					break;
 				case 'item_reference':
 					// Fourteen-ish bytes standing in for a whole chain of thought.
 					// Kept as a row precisely so its smallness is visible.
-					add({ kind: 'reasoning-ref', label: 'reasoning (by reference)', chars: sizeOf(item.id) });
+					add(
+						{ kind: 'reasoning-ref', label: 'reasoning (by reference)', chars: sizeOf(item.id) },
+						() =>
+							`${item.id}\n\nThe model's reasoning stays on the provider's side. Only this handle is re-sent, so a long chain of thought is not re-billed the way the conversation is.`
+					);
 					break;
 				default:
-					add({
-						kind: 'other',
-						label: item.type ?? item.role ?? 'unknown item',
-						chars: sizeOf(item)
-					});
+					add(
+						{
+							kind: 'other',
+							label: item.type ?? item.role ?? 'unknown item',
+							chars: sizeOf(item)
+						},
+						() => pretty(item)
+					);
 			}
 		}
 	}

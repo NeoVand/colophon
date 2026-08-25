@@ -133,18 +133,26 @@ export async function run({
  * provider calls, so it is the request in this application most likely to be
  * sitting inside a corporate proxy's buffer.
  *
- * No `thread`, and that is not an omission. The workflow has no memory: it
- * scopes, searches, selects, reads and writes from the question alone, every
- * time. Passing a thread would imply a continuity the pipeline does not have.
+ * The `thread` it takes is **not** a conversation to continue. The workflow has
+ * no memory: it scopes, searches, selects, reads and writes from the question
+ * alone, every time. It travels only as the key the server files this run's
+ * captured requests under, so the context panel can read a piece back.
  */
 export async function research({
 	question,
+	thread,
 	signal,
 	onEvent,
 	onReady,
 	onError
 }: {
 	question: string;
+	/**
+	 * Not a conversation to continue — the pipeline has no memory. It is only
+	 * the key the server files this run's captured requests under, so the
+	 * context panel can read them back.
+	 */
+	thread?: string;
 	signal?: AbortSignal;
 	/*
 	 * Two vocabularies on one channel: the pipeline's own stages, and the trace
@@ -158,7 +166,7 @@ export async function research({
 	const response = await fetch('/api/research', {
 		method: 'POST',
 		headers: { 'content-type': 'application/json' },
-		body: JSON.stringify({ question }),
+		body: JSON.stringify({ question, thread }),
 		signal
 	});
 

@@ -212,7 +212,10 @@ export const POST: RequestHandler = async ({ request }) => {
 				// papers. Memory attaches only when there is somewhere to keep it.
 				// The wire, tee'd. The agent is not told and does not behave
 				// differently; only the transport it was handed is ours.
-				const capture = createCapture();
+				// Filed under the thread so `/api/context` can read these same bodies
+				// back when a row is expanded. Without a key the capture dies with the
+				// request and the panel can only ever show labels.
+				const capture = createCapture({ key: thread });
 				const { agent } = await createColophon({ thread, capture: capture.fetch });
 				const remembers = isStorageConfigured() && Boolean(thread);
 

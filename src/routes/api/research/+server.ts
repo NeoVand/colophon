@@ -5,6 +5,7 @@ import { SourceRegistry } from '$lib/agent/sources';
 import { createResearchWorkflow } from '$lib/agent/research-workflow';
 import { projectWorkflow } from '$lib/agent/workflow-events';
 import { addUsage, readUsage, type Usage } from '$lib/agent/events';
+import { createCapture } from '$lib/agent/capture';
 import { recorderFor, traceFor, tracingState, type OpenSpan } from '$lib/server/tracing';
 
 /**
@@ -57,9 +58,19 @@ export const POST: RequestHandler = async ({ request }) => {
 		error(503, 'OPENAI_API_KEY is not configured on the server.');
 	}
 
-	const { question, detail = 'chat' } = (await request.json()) as {
+	const {
+		question,
+		detail = 'chat',
+		thread
+	} = (await request.json()) as {
 		question?: string;
 		detail?: 'chat' | 'full';
+		/**
+		 * Not used to remember anything — the pipeline has no memory. It is the
+		 * key the wire capture is filed under, so `/api/context` can find this
+		 * run's requests when a row in the context panel is expanded.
+		 */
+		thread?: string;
 	};
 	if (!question?.trim()) error(400, 'A question is required.');
 
@@ -159,8 +170,14 @@ export const POST: RequestHandler = async ({ request }) => {
 				 * token is.
 				 */
 				let spent: Usage = { input: 0, output: 0, total: 0, reasoning: 0, cached: 0 };
+				// The wire, tee'd — the same seam the chat route uses, for the same
+				// reason. Without it the context panel says "Nothing sent yet" through
+				// a run that made a dozen provider calls.
+				const capture = createCapture({ key: thread });
+
 				const workflow = createResearchWorkflow({
 					registry,
+					capture: capture.fetch,
 					meter: (usage) => (spent = addUsage(spent, readUsage(usage)))
 				});
 				const run = await workflow.createRun();

@@ -1,5 +1,5 @@
 import { Agent } from '@mastra/core/agent';
-import { model } from '$lib/server/model';
+import { model, type CaptureFetch } from '$lib/server/model';
 import { createReaderTools } from './tools';
 import type { SourceRegistry } from './sources';
 
@@ -65,7 +65,7 @@ and briefly.
 You cannot cite, search, or write documents. If the fetch fails, say so in one
 line and stop — do not guess at contents from the title.`;
 
-export function createPaperReader(registry: SourceRegistry): Agent {
+export function createPaperReader(registry: SourceRegistry, capture?: CaptureFetch): Agent {
 	const { tools } = createReaderTools(registry);
 
 	return new Agent({
@@ -79,7 +79,9 @@ export function createPaperReader(registry: SourceRegistry): Agent {
 			'full text out of your own context. One paper per call, and calls are dispatched ' +
 			'one after another: each takes about a minute, so four papers is four minutes.',
 		instructions: INSTRUCTIONS,
-		model: model(),
+		// The tee'd transport when there is one. The reader behaves identically
+		// either way — observation is added at the transport, never to the agent.
+		model: model(undefined, capture),
 		tools
 	});
 }

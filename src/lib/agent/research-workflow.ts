@@ -1,7 +1,7 @@
 import { createWorkflow, createStep } from '@mastra/core/workflows';
 import { Agent } from '@mastra/core/agent';
 import { z } from 'zod';
-import { model } from '$lib/server/model';
+import { model, type CaptureFetch } from '$lib/server/model';
 import { searchPapers } from './retrieval';
 import { SourceRegistry, formatReferences } from './sources';
 import { createPaperReader } from './paper-reader';
@@ -85,9 +85,19 @@ export interface ResearchDeps {
 	 * global for the same reason the registry is: two runs must not pool.
 	 */
 	meter?: (usage: unknown) => void;
+	/**
+	 * The tee'd `fetch`, so the context panel is a live instrument here too.
+	 *
+	 * Without it the panel sat on "Nothing sent yet" for the whole of a research
+	 * run — the pipeline's model calls go out through agents built inside these
+	 * steps, and nothing was watching that transport. Optional, and the pipeline
+	 * behaves identically with or without it: the agents are not told, only the
+	 * transport they were handed is ours.
+	 */
+	capture?: CaptureFetch;
 }
 
-function scopeAgent() {
+function scopeAgent(capture?: CaptureFetch) {
 	return new Agent({
 		id: 'research-scope',
 		name: 'Scope',
@@ -99,11 +109,11 @@ query with the words moved around, which returns the same papers and costs the
 same money.
 
 arXiv ANDs the terms, so keep each query to the three or four words that matter.`,
-		model: model()
+		model: model(undefined, capture)
 	});
 }
 
-function selectAgent() {
+function selectAgent(capture?: CaptureFetch) {
 	return new Agent({
 		id: 'research-select',
 		name: 'Select',
@@ -115,11 +125,11 @@ that are on topic. Prefer a paper that disagrees with the others over a fourth
 that agrees.
 
 Return arXiv ids exactly as given.`,
-		model: model()
+		model: model(undefined, capture)
 	});
 }
 
-function writeAgent(registry: SourceRegistry) {
+function writeAgent(registry: SourceRegistry, capture?: CaptureFetch) {
 	const { tools } = createResearchTools({ registry });
 	return new Agent({
 		id: 'research-write',
@@ -135,7 +145,7 @@ anything that did not enter this run. Do not write a references section — one 
 appended for you from what you actually cited.
 
 Match length to substance. A thin literature deserves a short answer.`,
-		model: model(),
+		model: model(undefined, capture),
 		// Only `cite`. The reading is done; this step's job is to write, and
 		// giving it search would let it wander back out into retrieval.
 		tools: { cite: tools.cite }
@@ -144,7 +154,7 @@ Match length to substance. A thin literature deserves a short answer.`,
 
 /* ── the steps ────────────────────────────────────────────────────────────── */
 
-export function createResearchWorkflow({ registry, meter }: ResearchDeps) {
+export function createResearchWorkflow({ registry, meter, capture }: ResearchDeps) {
 	/** Reports a call's spend, and shrugs when nobody is counting. */
 	const count = (usage: unknown) => meter?.(usage);
 
@@ -154,7 +164,7 @@ export function createResearchWorkflow({ registry, meter }: ResearchDeps) {
 		inputSchema: z.object({ question: z.string() }),
 		outputSchema: z.object({ question: z.string(), plan: Plan }),
 		execute: async ({ inputData }) => {
-			const result = await scopeAgent().generate(inputData.question, {
+			const result = await scopeAgent(capture).generate(inputData.question, {
 				structuredOutput: { schema: Plan }
 			});
 			count(result.totalUsage);
@@ -229,7 +239,7 @@ export function createResearchWorkflow({ registry, meter }: ResearchDeps) {
 				.map((p) => `- ${p.id} — ${p.title}${p.year ? ` (${p.year})` : ''}\n  ${p.abstract}`)
 				.join('\n');
 
-			const result = await selectAgent().generate(
+			const result = await selectAgent(capture).generate(
 				`Question: ${inputData.question}\n\nAngle: ${inputData.plan.angle}\n\nCandidates:\n${listing}`,
 				{ structuredOutput: { schema: Selection } }
 			);
@@ -252,7 +262,7 @@ export function createResearchWorkflow({ registry, meter }: ResearchDeps) {
 			notes: z.array(z.object({ arxivId: z.string(), notes: z.string() }))
 		}),
 		execute: async ({ inputData }) => {
-			const reader = createPaperReader(registry);
+			const reader = createPaperReader(registry, capture);
 
 			/*
 			 * The expensive step, and the one that most justifies the workflow.
@@ -299,7 +309,7 @@ export function createResearchWorkflow({ registry, meter }: ResearchDeps) {
 		execute: async ({ inputData }) => {
 			const notes = inputData.notes.map((n) => `### arXiv:${n.arxivId}\n${n.notes}`).join('\n\n');
 
-			const result = await writeAgent(registry).generate(
+			const result = await writeAgent(registry, capture).generate(
 				`Question: ${inputData.question}\n\nNotes from the papers that were read:\n\n${notes}`,
 				{ maxSteps: 12 }
 			);

@@ -52,6 +52,23 @@ export interface Turn {
 	approval?: { runId: string; id: string; name: string; args: unknown; deciding?: boolean };
 }
 
+/**
+ * One model call's request, as the browser holds it.
+ *
+ * The streamed decomposition plus what the provider went on to charge for it.
+ * The two arrive separately — the request is captured before its reply — so
+ * `measured` is the flag that keeps a row from claiming a number it does not
+ * have yet.
+ */
+export interface ContextShot extends Extract<ColophonEvent, { k: 'context' }> {
+	/** Billed input tokens for *this* call. Zero until its step lands. */
+	tokens: number;
+	/** Of those, how many the provider served from its prompt cache. */
+	cached: number;
+	/** True once the reply came back and the numbers above are real. */
+	measured: boolean;
+}
+
 /** Which of the two machines a turn was given to. */
 export type Mode = 'chat' | 'research';
 
@@ -126,31 +143,25 @@ export class Session {
 	});
 
 	/**
-	 * The most recent outgoing request, decomposed.
+	 * Every outgoing request this turn, decomposed, oldest first.
 	 *
-	 * One value rather than a history: the question the panel answers is "what
-	 * is in the window *now*", and keeping every call's decomposition for a
-	 * twelve-call research turn would hold a dozen copies of a growing
-	 * conversation in the browser to show one of them.
+	 * It used to be one value — the latest — on the argument that the question
+	 * the panel answers is "what is in the window *now*". That was the wrong
+	 * question, or at least only half of it. **A context is not a thing, it is a
+	 * thing that grows**, and the reading that teaches is watching the same
+	 * bands swell call after call as a paper's excerpt is re-sent. One snapshot
+	 * cannot show that; a list can, and the panel pages across it.
+	 *
+	 * It stays cheap because the decompositions are *light* — labels, sizes,
+	 * shares, no text. The text of any one call is fetched from `/api/context`
+	 * when a row is opened. See `Part.text`.
 	 */
-	context = $state<Extract<ColophonEvent, { k: 'context' }> | undefined>();
+	contexts = $state<ContextShot[]>([]);
 
-	/**
-	 * The input tokens billed for the request `context` describes — not the
-	 * turn's running total.
-	 *
-	 * These are different numbers and using the wrong one is a quiet lie. A turn
-	 * makes many provider calls; `turn.usage.input` is their *sum*, while
-	 * `context` is one call's request. Apportioning a cumulative total across a
-	 * single request's bands inflates every row, and the panel showed exactly
-	 * that before this existed.
-	 *
-	 * The pairing is exact because of the order the endpoint emits in: the
-	 * context for call N is sent when call N's first chunk arrives, and call N's
-	 * `step-finish` follows before call N+1 begins. So the next `step` after a
-	 * `context` is always that context's own call.
-	 */
-	contextTokens = $state(0);
+	/** The latest call, which is what the panel opens on. */
+	get context(): ContextShot | undefined {
+		return this.contexts[this.contexts.length - 1];
+	}
 
 	#seq = 0;
 	#startedAt = 0;
@@ -201,8 +212,7 @@ export class Session {
 		this.papers = [];
 		this.workflow = [];
 		this.spans = [];
-		this.context = undefined;
-		this.contextTokens = 0;
+		this.contexts = [];
 		this.#seq = 0;
 	}
 
@@ -214,8 +224,7 @@ export class Session {
 		this.papers = [];
 		this.workflow = [];
 		this.spans = [];
-		this.context = undefined;
-		this.contextTokens = 0;
+		this.contexts = [];
 		this.#seq = 0;
 	}
 
@@ -280,15 +289,34 @@ export class Session {
 				break;
 			}
 			case 'context':
-				this.context = event;
-				// Cleared, not carried over: showing the previous call's tokens
-				// against this call's bands is the bug this pairing exists to avoid.
-				this.contextTokens = 0;
+				// Pushed with no tokens: nothing has been billed for this call yet,
+				// and a row claiming a number here would be showing the *previous*
+				// call's bill against this call's bands.
+				this.contexts.push({ ...event, tokens: 0, cached: 0, measured: false });
 				break;
-			case 'step':
+			case 'step': {
 				turn.usage = addUsage(turn.usage ?? ZERO, event.usage);
-				this.contextTokens = event.usage.input;
+				/*
+				 * The bill lands on the call it belongs to, not on a single shared
+				 * slot.
+				 *
+				 * The pairing is exact because of the order the endpoint emits in: the
+				 * context for call N is sent when call N's first chunk arrives, and
+				 * call N's `step-finish` follows before call N+1 begins. So the newest
+				 * unmeasured shot is always this step's own call — which is why this
+				 * walks back to it rather than assuming the last one, and why paging
+				 * to an older call shows that call's real numbers rather than the
+				 * turn's running total apportioned across it.
+				 */
+				for (let i = this.contexts.length - 1; i >= 0; i--) {
+					if (this.contexts[i].measured) break;
+					this.contexts[i].tokens = event.usage.input;
+					this.contexts[i].cached = event.usage.cached;
+					this.contexts[i].measured = true;
+					break;
+				}
 				break;
+			}
 			case 'done':
 				turn.thinking = false;
 				// `done` reports the run total, which supersedes the per-step sum.
@@ -479,6 +507,8 @@ export class Session {
 		this.#controller = new AbortController();
 		await research({
 			question,
+			// Not for memory — the key the captured requests are filed under.
+			thread: this.thread,
 			signal: this.#controller.signal,
 			onReady: (_ms, data) => {
 				// The workflow run exists before it is started, so unlike a chat turn

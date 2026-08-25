@@ -8,7 +8,8 @@ import {
 	costOf,
 	cachedFraction,
 	perStep,
-	usd
+	usd,
+	windowFor
 } from './usage';
 
 /** A usage object with the fields a case cares about, zeroed everywhere else. */
@@ -167,5 +168,31 @@ describe('usd', () => {
 	it('prints an exact zero plainly and refuses a number it does not have', () => {
 		expect(usd(0)).toBe('$0.00');
 		expect(usd(NaN)).toBe('—');
+	});
+});
+
+/**
+ * The input window, which the context gauge draws against.
+ *
+ * Same discipline as the rates above and for the same reason: it is a published
+ * number Colophon cannot measure, so an unknown model must produce *no gauge*
+ * rather than a bar drawn against a plausible invention. A context panel that
+ * overstated the headroom would be exactly the readout this app exists to
+ * replace.
+ */
+describe('windowFor', () => {
+	it('knows the family that is wired up', () => {
+		expect(windowFor('gpt-5')).toBe(272_000);
+		expect(windowFor('gpt-5-mini')).toBe(272_000);
+	});
+
+	it('tolerates the dated ids the provider also answers to', () => {
+		expect(windowFor('gpt-5-2026-03-11')).toBe(272_000);
+	});
+
+	it('says nothing about a model it has not been told about', () => {
+		expect(windowFor('some-other-model')).toBeUndefined();
+		expect(windowFor(undefined)).toBeUndefined();
+		expect(windowFor('')).toBeUndefined();
 	});
 });
