@@ -1,6 +1,11 @@
 <script lang="ts">
 	import { session } from '$lib/agent/session.svelte';
 	import { apportion, bands, type Part } from '$lib/agent/context';
+	import { ICON } from '$lib/icons';
+	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
+	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import Toolbar from '$lib/components/ui/Toolbar.svelte';
+	import IconButton from '$lib/components/ui/IconButton.svelte';
 
 	/**
 	 * What is actually in the window.
@@ -57,21 +62,77 @@
 	function kb(chars: number): string {
 		return chars >= 1000 ? `${(chars / 1000).toFixed(1)}k` : String(chars);
 	}
+
+	/**
+	 * Percent or tokens, never both.
+	 *
+	 * They answer different questions and the panel is too narrow to ask both at
+	 * once. A share says which row *dominates* — the reading that matters while a
+	 * turn is running and the numbers are moving. A token count is what you put in
+	 * a message to someone: "the schemas are 4,100 tokens on every call" is an
+	 * argument, "the schemas are 31%" is an observation.
+	 */
+	let unit = $state<'share' | 'tokens'>('share');
+
+	let copied = $state(false);
+	let flash: ReturnType<typeof setTimeout> | undefined;
+
+	/**
+	 * The decomposition, as JSON.
+	 *
+	 * The whole point of this panel is that it reads the literal request off the
+	 * provider's own fetch, and a number you cannot get out of the page is a
+	 * number you cannot check. So this copies the rows as data — including the
+	 * billed total the shares were apportioned from, without which the token
+	 * columns cannot be reconstructed or argued with.
+	 */
+	async function copyJson(): Promise<void> {
+		if (!ctx) return;
+		const payload = {
+			call: ctx.call,
+			bytes: ctx.bytes,
+			inputTokens,
+			parts: rows.map((r) => ({
+				kind: r.kind,
+				label: r.label,
+				chars: r.chars,
+				share: r.share,
+				tokens: r.tokens
+			}))
+		};
+		await navigator.clipboard.writeText(JSON.stringify(payload, null, 2));
+		copied = true;
+		clearTimeout(flash);
+		flash = setTimeout(() => (copied = false), 1200);
+	}
 </script>
 
-<section class="panel">
-	<header>
-		<span class="co-eyebrow">context</span>
-		{#if ctx}
-			<span class="co-num meta">call {ctx.call} · {kb(ctx.bytes)}B</span>
-		{/if}
-	</header>
+<PanelFrame
+	label="context"
+	icon={ICON.context}
+	tone="memory"
+	readout={ctx ? `call ${ctx.call} · ${kb(ctx.bytes)}B` : undefined}
+>
+	{#snippet actions()}
+		<Toolbar>
+			<IconButton
+				icon={ICON.spend}
+				label="absolute tokens"
+				active={unit === 'tokens'}
+				disabled={!inputTokens}
+				onclick={() => (unit = unit === 'share' ? 'tokens' : 'share')}
+			/>
+			<IconButton
+				icon={copied ? ICON.check : ICON.copy}
+				label="copy as JSON"
+				disabled={!ctx}
+				onclick={copyJson}
+			/>
+		</Toolbar>
+	{/snippet}
 
 	{#if !ctx}
-		<p class="quiet">
-			Nothing sent yet. This is the literal request — read off the provider fetch, not from anything
-			the agent was asked to report.
-		</p>
+		<EmptyState icon={ICON.context} tone="memory" title="Nothing sent yet" />
 	{:else}
 		<div class="bar" role="img" aria-label="What the outgoing request is made of">
 			{#each merged as b (b.kind)}
@@ -89,8 +150,11 @@
 				<li style:--tone="var({TONE[row.kind] ?? '--co-gate'})">
 					<span class="swatch"></span>
 					<span class="label">{row.label}</span>
-					{#if row.tokens}<span class="co-num tok">{row.tokens.toLocaleString()}</span>{/if}
-					<span class="co-num pct">{Math.round(row.share * 100)}%</span>
+					{#if unit === 'tokens' && row.tokens}
+						<span class="co-num tok">{row.tokens.toLocaleString()}</span>
+					{:else}
+						<span class="co-num pct">{Math.round(row.share * 100)}%</span>
+					{/if}
 				</li>
 			{/each}
 		</ul>
@@ -106,44 +170,15 @@
 				one thing it exists to be trusted on.
 			-->
 			<p class="caveat">
-				{inputTokens.toLocaleString()} billed input tokens, split by size — the provider bills the request
-				whole, so these are attributed rather than measured.
+				{inputTokens.toLocaleString()} billed input tokens, split by size — attributed, not measured.
 			</p>
 		{/if}
 	{/if}
-</section>
+</PanelFrame>
 
 <style>
-	.panel {
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-		min-height: 0;
-	}
-
-	header {
-		display: flex;
-		align-items: baseline;
-		gap: 0.6rem;
-		flex: none;
-	}
-	header .co-eyebrow {
-		color: color-mix(in oklab, var(--co-memory) 70%, var(--muted-foreground));
-	}
-	.meta {
-		margin-left: auto;
-		font-size: 0.625rem;
-		color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
-	}
-
-	.quiet {
-		margin: 0;
-		font-size: 0.75rem;
-		line-height: 1.5;
-		color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
-		text-wrap: pretty;
-	}
-
+	/* The frame draws the header; each block below indents itself to the same
+	   left edge as the label above it. */
 	.bar {
 		display: flex;
 		height: 6px;
@@ -151,6 +186,7 @@
 		overflow: hidden;
 		background: var(--muted);
 		flex: none;
+		margin: 0.6rem 0.7rem 0.5rem;
 	}
 	.seg {
 		background: var(--tone);
@@ -160,7 +196,7 @@
 
 	.rows {
 		margin: 0;
-		padding: 0;
+		padding: 0 0.7rem;
 		list-style: none;
 		overflow-y: auto;
 		min-height: 0;
@@ -189,18 +225,25 @@
 		white-space: nowrap;
 		color: var(--muted-foreground);
 	}
+	/* One column, either way — the two readings swap in place, so switching
+	   between them does not shift every label sideways. */
+	.tok,
+	.pct {
+		flex: none;
+		width: 3.4rem;
+		text-align: right;
+	}
 	.tok {
 		color: color-mix(in oklab, var(--foreground) 80%, transparent);
 	}
 	.pct {
-		width: 2.4rem;
-		text-align: right;
 		color: color-mix(in oklab, var(--muted-foreground) 65%, transparent);
 	}
 
 	.caveat {
 		flex: none;
-		margin: 0.15rem 0 0;
+		margin: 0.25rem 0 0;
+		padding: 0 0.7rem 0.7rem;
 		font-size: 0.625rem;
 		line-height: 1.5;
 		color: color-mix(in oklab, var(--muted-foreground) 60%, transparent);

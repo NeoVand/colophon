@@ -1,70 +1,277 @@
 <script lang="ts">
 	import { onMount } from 'svelte';
+	import { Pane, PaneGroup } from 'paneforge';
 	import { session } from '$lib/agent/session.svelte';
 	import { theme } from '$lib/theme.svelte';
+	import { layout } from '$lib/layout.svelte';
+	import * as threads from '$lib/threads';
+	import { ICON } from '$lib/icons';
+
 	import Header from '$lib/components/Header.svelte';
+	import Divider from '$lib/components/Divider.svelte';
+	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
 	import Conversation from '$lib/components/chat/Conversation.svelte';
 	import Composer from '$lib/components/chat/Composer.svelte';
+	import ActivityStrip from '$lib/components/chat/ActivityStrip.svelte';
+	import ThreadList from '$lib/components/chat/ThreadList.svelte';
+	import SettingsSheet from '$lib/components/SettingsSheet.svelte';
+	import AboutSheet from '$lib/components/AboutSheet.svelte';
+
+	import WorkflowPanel from '$lib/components/xray/WorkflowPanel.svelte';
 	import EventTimeline from '$lib/components/xray/EventTimeline.svelte';
-	import LibraryPanel from '$lib/components/xray/LibraryPanel.svelte';
-	import SpendBar from '$lib/components/xray/SpendBar.svelte';
+	import Inspector from '$lib/components/xray/Inspector.svelte';
+	import Sheet from '$lib/components/ui/Sheet.svelte';
 	import ContextPanel from '$lib/components/xray/ContextPanel.svelte';
+	import LibraryPanel from '$lib/components/xray/LibraryPanel.svelte';
+	import FiguresPanel from '$lib/components/xray/FiguresPanel.svelte';
+	import DocumentsPanel from '$lib/components/xray/DocumentsPanel.svelte';
+	import GraphPanel from '$lib/components/xray/GraphPanel.svelte';
+	import ToolsPanel from '$lib/components/xray/ToolsPanel.svelte';
+	import SubagentsPanel from '$lib/components/xray/SubagentsPanel.svelte';
+	import SkillsPanel from '$lib/components/xray/SkillsPanel.svelte';
 	import MemoryPanel from '$lib/components/xray/MemoryPanel.svelte';
+	import McpPanel from '$lib/components/xray/McpPanel.svelte';
+	import TracePanel from '$lib/components/xray/TracePanel.svelte';
+	import SpendBar from '$lib/components/xray/SpendBar.svelte';
+	import RunPanel from '$lib/components/xray/RunPanel.svelte';
 
 	/**
-	 * Two columns: the work, and the dissection.
+	 * Three columns: the work, the run, and the machine.
 	 *
-	 * The conversation is the product and gets the room. The X-ray is a flank
-	 * that can be shut — it is for teaching and for debugging, and someone who
-	 * only wants a research companion should not have to look at instrumentation
-	 * to use one.
+	 * The first arrangement was two columns with a dozen instruments stacked in
+	 * a scrolling strip, and it was rejected on sight — correctly. A column of
+	 * twelve collapsed labels is a settings page. What makes an instrument panel
+	 * legible is that things which answer the same question sit together, and
+	 * that each one gets enough room to be read rather than scrolled.
 	 *
-	 * `onMount` rather than `$effect` for the two startup calls. Both read
-	 * `localStorage` and write tracked state; inside an effect that is a write
-	 * to something the effect itself depends on, and Svelte 5 answers with
-	 * `effect_update_depth_exceeded` — a lesson this codebase has already paid
-	 * for once.
+	 * So the split is by *question*, not by subsystem:
+	 *
+	 *   chat     what you asked, and what came back
+	 *   middle   what is happening right now — the pipeline, the event stream,
+	 *            and the request going out this second
+	 *   right    what the machine is made of — its shape, its tools, its crew,
+	 *            what it remembers
+	 *
+	 * The middle column changes constantly during a run. The right column barely
+	 * changes at all: it is the harness, and it is what you read *between* runs.
+	 * Putting a live event stream next to a static tool inventory was most of
+	 * why the first version felt like noise.
+	 *
+	 * Panels are grouped into tabs where they are two readings of one subject.
+	 * A tab is never navigation here — `library`/`figures` is "what this run
+	 * gathered", seen two ways.
+	 *
+	 * Every pane is resizable and every size persists via paneforge's
+	 * `autoSaveId`. `onMount` for the stores: each reads `localStorage` and
+	 * writes tracked state, which inside an `$effect` is
+	 * `effect_update_depth_exceeded` — shipped twice here already.
 	 */
-	let xray = $state(false);
+	let settingsOpen = $state(false);
+	let aboutOpen = $state(false);
+	let threadsOpen = $state(false);
+	let model = $state('gpt-5');
+	let mode = $state<'chat' | 'research'>('chat');
+
+	/** Which tab each grouped panel is showing. */
+	let artefacts = $state('library');
+
+	/**
+	 * The event the inspector is open on, by `seq`.
+	 *
+	 * `Inspector` was written, finished and mounted nowhere, and the timeline had
+	 * no selection at all — so the one thing an X-ray is *for*, getting behind a
+	 * summary to the object it summarises, could not be done here at all. Every
+	 * row in that list is a sentence somebody wrote; this is how you check it.
+	 *
+	 * Held by `seq` rather than by the event object, so the panel keeps following
+	 * the live log: the same event re-derived on the next frame is still the one
+	 * that is open.
+	 */
+	let inspecting = $state<number | undefined>();
+	const inspected = $derived(session.events.find((e) => e.seq === inspecting));
+	/** `Sheet` binds `open`; this keeps the two representations in step. */
+	let inspectorOpen = $state(false);
+	$effect(() => {
+		if (!inspectorOpen) inspecting = undefined;
+	});
+	let machine = $state('graph');
 
 	onMount(() => {
 		theme.start();
+		layout.start();
 		session.restore();
-		xray = localStorage.getItem('colophon:xray') === '1';
+		threads.touch(session.thread);
 	});
 
-	function toggleXray() {
-		xray = !xray;
-		localStorage.setItem('colophon:xray', xray ? '1' : '0');
+	function openThread(id: string) {
+		session.open(id);
+		threads.touch(id);
+		threadsOpen = false;
+	}
+
+	function newThread() {
+		session.newThread();
+		threads.touch(session.thread);
 	}
 </script>
 
 <svelte:head><title>Colophon</title></svelte:head>
 
 <div class="app">
-	<Header {xray} onxray={toggleXray} />
+	<Header
+		flank={layout.showFlank}
+		onflank={() => layout.toggleFlank()}
+		onsettings={() => (settingsOpen = true)}
+		onabout={() => (aboutOpen = true)}
+		onthreads={() => (threadsOpen = true)}
+		onnew={newThread}
+	/>
 
-	<main class:split={xray}>
-		<section class="work">
-			<Conversation />
-			<Composer />
-		</section>
+	<main>
+		{#if layout.showFlank}
+			<PaneGroup direction="horizontal" autoSaveId="co:root" class="group">
+				<Pane defaultSize={34} minSize={22}>{@render chat()}</Pane>
+				<Divider />
+				<Pane defaultSize={66} minSize={30}>
+					<PaneGroup direction="horizontal" autoSaveId="co:xray" class="group">
+						<!-- ── what is happening right now ───────────────────── -->
+						<Pane defaultSize={44} minSize={24}>
+							<PaneGroup direction="vertical" autoSaveId="co:live" class="group">
+								<Pane defaultSize={26} minSize={10} collapsible collapsedSize={6}>
+									<WorkflowPanel />
+								</Pane>
+								<Divider direction="vertical" />
+								<Pane defaultSize={42} minSize={16}>
+									<EventTimeline
+										selected={inspecting}
+										onselect={(seq) => {
+											inspecting = seq;
+											inspectorOpen = true;
+										}}
+									/>
+								</Pane>
+								<Divider direction="vertical" />
+								<Pane defaultSize={32} minSize={12} collapsible collapsedSize={6}>
+									<ContextPanel />
+								</Pane>
+							</PaneGroup>
+						</Pane>
 
-		{#if xray}
-			<aside class="flank">
-				<SpendBar />
-				<div class="hr"></div>
-				<MemoryPanel />
-				<div class="hr"></div>
-				<div class="slot context"><ContextPanel /></div>
-				<div class="hr"></div>
-				<div class="slot"><LibraryPanel /></div>
-				<div class="hr"></div>
-				<div class="slot events"><EventTimeline /></div>
-			</aside>
+						<Divider />
+
+						<!-- ── what the machine is made of ───────────────────── -->
+						<Pane defaultSize={56} minSize={26}>
+							<PaneGroup direction="vertical" autoSaveId="co:machine" class="group">
+								<Pane defaultSize={40} minSize={16}>
+									<!--
+										Papers met, figures drawn, documents written — one group, because
+										they answer one question: what does this run have to show for
+										itself? `documents` is the only one of the three that outlives the
+										thread, which is exactly why it belongs beside the two that do not.
+										It was written for this flank and then shipped mounted nowhere, so
+										"give it a task and write the paper" had nowhere to land in view.
+									-->
+									<PanelFrame
+										label="artefacts"
+										icon={ICON.library}
+										tone="library"
+										bind:active={artefacts}
+										tabs={[
+											{ id: 'library', label: 'library', icon: ICON.paper },
+											{ id: 'figures', label: 'figures', icon: ICON.figure },
+											{ id: 'documents', label: 'documents', icon: ICON.prose }
+										]}
+									>
+										{#if artefacts === 'library'}
+											<LibraryPanel bare />
+										{:else if artefacts === 'figures'}
+											<FiguresPanel bare />
+										{:else}
+											<DocumentsPanel bare />
+										{/if}
+									</PanelFrame>
+								</Pane>
+								<Divider direction="vertical" />
+								<Pane defaultSize={40} minSize={18}>
+									<PanelFrame
+										label="harness"
+										icon={ICON.workflow}
+										tone="subagent"
+										bind:active={machine}
+										tabs={[
+											{ id: 'graph', label: 'graph' },
+											{ id: 'tools', label: 'tools' },
+											{ id: 'crew', label: 'crew' },
+											{ id: 'skills', label: 'skills' },
+											{ id: 'memory', label: 'memory' },
+											{ id: 'mcp', label: 'mcp' },
+											{ id: 'trace', label: 'trace' }
+										]}
+									>
+										{#if machine === 'graph'}<GraphPanel bare />
+										{:else if machine === 'tools'}<ToolsPanel bare />
+										{:else if machine === 'crew'}<SubagentsPanel bare />
+										{:else if machine === 'skills'}<SkillsPanel bare />
+										{:else if machine === 'memory'}<MemoryPanel bare />
+										{:else if machine === 'mcp'}<McpPanel bare />
+										{:else}<TracePanel bare />{/if}
+									</PanelFrame>
+								</Pane>
+								<Divider direction="vertical" />
+								<!-- The two readouts you glance at rather than read, so they
+									     sit at the bottom where the eye rests between runs. -->
+								<Pane defaultSize={20} minSize={10} collapsible collapsedSize={6}>
+									<PaneGroup direction="horizontal" autoSaveId="co:vitals" class="group">
+										<Pane defaultSize={50} minSize={25}><RunPanel /></Pane>
+										<Divider />
+										<Pane defaultSize={50} minSize={25}><SpendBar /></Pane>
+									</PaneGroup>
+								</Pane>
+							</PaneGroup>
+						</Pane>
+					</PaneGroup>
+				</Pane>
+			</PaneGroup>
+		{:else}
+			{@render chat()}
 		{/if}
 	</main>
 </div>
+
+{#snippet chat()}
+	<section class="work">
+		<Conversation />
+		<ActivityStrip />
+		<Composer bind:mode />
+	</section>
+{/snippet}
+
+<ThreadList bind:open={threadsOpen} current={session.thread} onopen={openThread} />
+
+<SettingsSheet
+	bind:open={settingsOpen}
+	{model}
+	onmodel={(m) => (model = m)}
+	onclear={() => {
+		threads.clear();
+		layout.reset();
+		session.newThread();
+	}}
+/>
+
+<AboutSheet bind:open={aboutOpen} />
+
+<!--
+	The inspector, in a sheet rather than a fourth pane.
+
+	A pane is the harnessXray answer and it needs room this layout has already
+	spent: three columns are full, and a fourth would put the transcript under
+	forty characters. A sheet costs one keystroke to dismiss and can be as wide
+	as the frame it is reading, which is what a raw request body needs.
+-->
+<Sheet bind:open={inspectorOpen} side="right" title="Event">
+	<Inspector event={inspected} onclose={() => (inspectorOpen = false)} />
+</Sheet>
 
 <style>
 	.app {
@@ -81,85 +288,16 @@
 		display: flex;
 	}
 
+	/* paneforge's own element, which Svelte does not scope-stamp. */
+	main :global(.group) {
+		height: 100%;
+		width: 100%;
+	}
+
 	.work {
-		flex: 1;
+		height: 100%;
+		display: flex;
+		flex-direction: column;
 		min-width: 0;
-		display: flex;
-		flex-direction: column;
-	}
-
-	/*
-		A flank, not a sidebar.
-
-		Separated by a single hairline and nothing else — no card, no shadow, no
-		second background. The instruments inside are already obviously distinct
-		objects; drawing a box around each one is how a panel of readouts turns
-		into a form. Space and the eyebrow labels do the work.
-	*/
-	.flank {
-		flex: none;
-		width: 22rem;
-		display: flex;
-		flex-direction: column;
-		gap: 0.85rem;
-		padding: 0.85rem 0.6rem 0.85rem 1rem;
-		border-left: 1px solid color-mix(in oklab, var(--border) 60%, transparent);
-		min-height: 0;
-	}
-
-	.hr {
-		flex: none;
-		height: 1px;
-		background: color-mix(in oklab, var(--border) 45%, transparent);
-	}
-
-	/*
-		The two scrolling instruments share what the spend bar leaves.
-
-		Without this each one is sized by its content, so a search returning
-		twelve papers pushes the event timeline off the bottom of the screen —
-		which it did. `flex-basis: 0` rather than `auto` is the load-bearing part:
-		with `auto` the basis is still the content height and a long list wins the
-		negotiation before it starts.
-
-		Sizing lives here rather than in the panels because it is a fact about
-		this column, not about a library. The `:global` reaches the component's
-		own root, which is the element that has to do the growing.
-	*/
-	.slot {
-		flex: 1 1 0;
-		min-height: 0;
-		display: flex;
-		flex-direction: column;
-		/* `min-height: 0` lets a slot shrink to nothing when a sibling grows, and
-		   a shrunk slot whose child does not scroll spills its text over whatever
-		   is below. Clipping here means the worst case is content cut off rather
-		   than two panels printed on top of each other. */
-		overflow: hidden;
-	}
-	.slot > :global(*) {
-		flex: 1;
-		min-height: 0;
-	}
-
-	/* Event rows are a third the height of a library row, so an even split
-	   shows about three of them. Weighted to what each one needs to be useful. */
-	.slot.events {
-		flex-grow: 1.35;
-	}
-
-	/* The context rows are few and fixed in number — one per tool schema plus a
-	   handful — so it needs less than an equal third and giving it one starves
-	   the two that grow. */
-	.slot.context {
-		flex-grow: 0.75;
-	}
-
-	/* Under a certain width two columns is one cramped column and one useless
-	   one, so the flank goes rather than shrinking past legibility. */
-	@media (max-width: 960px) {
-		.flank {
-			display: none;
-		}
 	}
 </style>

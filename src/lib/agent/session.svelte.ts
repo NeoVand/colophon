@@ -62,7 +62,11 @@ export interface LoggedEvent {
 
 const ZERO: Usage = { input: 0, output: 0, total: 0, reasoning: 0, cached: 0 };
 
-class Session {
+/**
+ * Exported for tests only — the app uses the `session` singleton at the bottom.
+ * A second live instance would be a second conversation with the same storage.
+ */
+export class Session {
 	turns = $state<Turn[]>([]);
 	events = $state<LoggedEvent[]>([]);
 	status = $state<'idle' | 'running' | 'waiting'>('idle');
@@ -125,6 +129,32 @@ class Session {
 		const existing = localStorage.getItem('colophon:thread');
 		this.thread = existing ?? crypto.randomUUID();
 		if (!existing) localStorage.setItem('colophon:thread', this.thread);
+	}
+
+	/**
+	 * Switch to a conversation that already exists.
+	 *
+	 * The turns are deliberately **not** replayed into the view. Mastra holds
+	 * the thread's messages server-side and the agent will have them on the next
+	 * send, so the conversation continues correctly — but re-rendering the
+	 * history here would mean re-deriving the library, the events and the spend
+	 * from turns that were streamed hours ago and are no longer in this store.
+	 * Showing a stale X-ray beside a live conversation is worse than showing an
+	 * empty one, so the panels reset and say nothing rather than something wrong.
+	 *
+	 * That is a real limitation and it is written down rather than hidden: a
+	 * transcript view is a separate feature, and it belongs in the vault.
+	 */
+	open(id: string): void {
+		if (!id || id === this.thread) return;
+		this.thread = id;
+		localStorage.setItem('colophon:thread', id);
+		this.turns = [];
+		this.events = [];
+		this.papers = [];
+		this.context = undefined;
+		this.contextTokens = 0;
+		this.#seq = 0;
 	}
 
 	newThread(): void {
@@ -252,7 +282,16 @@ class Session {
 		this.#controller = undefined;
 	}
 
-	async decide(turn: Turn, approve: boolean): Promise<void> {
+	/**
+	 * Approve or decline a paused tool call.
+	 *
+	 * `edited` exists for `present_outline`, where the reader may rewrite the
+	 * structure before approving. It has to travel all the way to the server
+	 * because `approveToolCall()` takes no argument override — a resumed call
+	 * runs with the arguments the *model* wrote. Without this the outline card
+	 * would offer an edit and then discard it, which is worse than not offering.
+	 */
+	async decide(turn: Turn, approve: boolean, edited?: unknown): Promise<void> {
 		const pending = turn.approval;
 		if (!pending || pending.deciding) return;
 		pending.deciding = true;
@@ -262,14 +301,36 @@ class Session {
 			runId: pending.runId,
 			toolCallId: pending.id,
 			approve,
+			edited,
 			onEvent: (event) => this.#apply(turn, event),
 			onError: (message) => {
 				turn.error = message;
+				// Without this the card's buttons stay disabled for good and the
+				// only way out of a failed decision is a reload. A decision that
+				// did not go through has not been made.
+				pending.deciding = false;
 			}
 		});
 
-		turn.approval = undefined;
-		this.status = 'idle';
+		/*
+		 * Clear the slot only if it still holds the decision we just made.
+		 *
+		 * A resumed run can suspend *again* before its stream ends — ask for two
+		 * infographics and the second `generate_image` is requested and suspended
+		 * while this very `respond()` is still reading. `#apply` puts that second
+		 * approval in `turn.approval`, and the unconditional `= undefined` that
+		 * used to sit here threw it away: the card vanished, the composer
+		 * re-enabled, and the run was left suspended on the server with nothing on
+		 * screen able to release it. Approving from the stale card that was still
+		 * in the DOM then sent the *first* call's id back, which is where
+		 *
+		 *     resumeStream() cannot resume tool call "call_…" because it is not
+		 *     suspended
+		 *
+		 * came from — the id was real, it had simply already been resumed.
+		 */
+		if (turn.approval === pending) turn.approval = undefined;
+		this.status = turn.approval ? 'waiting' : 'idle';
 	}
 
 	stop(): void {

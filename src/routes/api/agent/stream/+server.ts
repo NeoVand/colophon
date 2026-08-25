@@ -49,19 +49,84 @@ export const POST: RequestHandler = async ({ request }) => {
 
 	const encoder = new TextEncoder();
 
+	/**
+	 * Silences the heartbeat. Assigned by `start`, called by `cancel` — which is
+	 * why it lives out here: the two run at different times on the same stream,
+	 * and `cancel` fires while `start` is still suspended mid-run.
+	 */
+	let stop = () => {};
+
+	/**
+	 * Everything that has to be true whether the run ends or the reader leaves.
+	 *
+	 * ── The bug this shape exists to prevent ────────────────────────────────
+	 * The dev server "died mid-run" perhaps a dozen times over this project's
+	 * life, always during a long streaming turn, always leaving
+	 * `ERR_CONNECTION_REFUSED` and nothing in its own log. It was written off as
+	 * a Vite quirk. It was this:
+	 *
+	 *     TypeError [ERR_INVALID_STATE]: Invalid state: Controller is already closed
+	 *         at ReadableStreamDefaultController.enqueue
+	 *         at Timeout._onTimeout (api/agent/stream/+server.ts:57)
+	 *
+	 * Line 57 was the heartbeat. When a reader navigates away mid-run the stream
+	 * is **cancelled**, which closes the controller — but `start()` is still
+	 * sitting in `for await`, so the `finally` that cleared the interval had not
+	 * run and the `open` flag it sets was still `true`. Fifteen seconds later the
+	 * timer fired, enqueued into a closed controller, and threw *inside a timer
+	 * callback* — where there is no `try` to catch it and no promise to reject.
+	 * Node's default for an uncaught exception is to kill the process, so one
+	 * person closing a tab took the whole server down with them.
+	 *
+	 * It was invisible because the death is delayed and silent: up to fifteen
+	 * seconds after a navigation, in a log nobody reads, on a server everyone
+	 * assumed had crashed for its own reasons. It cost several paid runs and a
+	 * standing instruction in `docs/STATE.md` not to touch the repo during a run,
+	 * which was superstition addressing a real symptom.
+	 *
+	 * Two fixes, because either alone would have been enough and neither is
+	 * sufficient on its own reasoning:
+	 *
+	 * 1. `cancel()` — the callback the stream *does* invoke when a reader leaves.
+	 *    This is the correct fix. Clearing the interval there is the whole point
+	 *    of the callback existing.
+	 * 2. `send()` and the heartbeat both swallow a closed-controller throw. This
+	 *    is the backstop, and it earns its place: the race is real however
+	 *    carefully the flag is managed, because the timer can fire between the
+	 *    controller closing and any handler running. A stream nobody is reading
+	 *    is not worth an exception.
+	 */
 	const stream = new ReadableStream<Uint8Array>({
 		async start(controller) {
 			let open = true;
-			const send = (event: string, data: unknown) => {
+
+			/**
+			 * Write a frame, or notice that nobody is listening any more.
+			 *
+			 * The `open` flag is the fast path; the `catch` is the truth. Once a
+			 * write fails the reader is gone for good, so `open` latches false and
+			 * the rest of the run stops trying.
+			 */
+			const write = (frame: string) => {
 				if (!open) return;
-				controller.enqueue(encoder.encode(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`));
+				try {
+					controller.enqueue(encoder.encode(frame));
+				} catch {
+					open = false;
+				}
+			};
+
+			const send = (event: string, data: unknown) => {
+				write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
 			};
 
 			// A comment frame: valid SSE, ignored by EventSource, and enough traffic
 			// to keep an idle intermediary from deciding the response has stalled.
-			const heartbeat = setInterval(() => {
-				if (open) controller.enqueue(encoder.encode(': keep-alive\n\n'));
-			}, HEARTBEAT_MS);
+			const heartbeat = setInterval(() => write(': keep-alive\n\n'), HEARTBEAT_MS);
+			stop = () => {
+				open = false;
+				clearInterval(heartbeat);
+			};
 
 			try {
 				// Sent before any model work so the client can time first-byte and
@@ -74,7 +139,7 @@ export const POST: RequestHandler = async ({ request }) => {
 				// The wire, tee'd. The agent is not told and does not behave
 				// differently; only the transport it was handed is ours.
 				const capture = createCapture();
-				const { agent } = createColophon({ thread, capture: capture.fetch });
+				const { agent } = await createColophon({ thread, capture: capture.fetch });
 				const remembers = isStorageConfigured() && Boolean(thread);
 
 				const result = await agent.stream(prompt, {
@@ -142,10 +207,26 @@ export const POST: RequestHandler = async ({ request }) => {
 			} catch (cause) {
 				send('failed', { message: cause instanceof Error ? cause.message : String(cause) });
 			} finally {
-				open = false;
-				clearInterval(heartbeat);
-				controller.close();
+				stop();
+				try {
+					controller.close();
+				} catch {
+					// Already closed, because the reader left first. Nothing to do —
+					// and throwing here would replace a clean end with a 500 on a
+					// response nobody is holding.
+				}
 			}
+		},
+
+		/**
+		 * The reader navigated away, closed the tab, or pressed stop.
+		 *
+		 * This is the callback whose absence killed the process. It runs while
+		 * `start()` is still suspended in its `for await`, which is exactly when
+		 * the heartbeat has to be silenced.
+		 */
+		cancel() {
+			stop();
 		}
 	});
 

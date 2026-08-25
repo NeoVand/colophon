@@ -5,6 +5,10 @@ import { agentMemory, isStorageConfigured, storage } from '$lib/server/storage';
 import { createResearchTools, type ResearchTools } from './tools';
 import { createPaperReader } from './paper-reader';
 import { createImageTools } from './image-tools';
+import { createWritingTools, type Outline } from './writing-tools';
+import { COLOPHON_SKILLS } from './skills';
+import { COLOPHON_SCORERS } from './scorers';
+import { isMcpConfigured, toolsForAgent } from '$lib/server/mcp';
 
 /**
  * Colophon itself.
@@ -27,8 +31,14 @@ Open the few that matter.
 **Delegate reading.** Use the paper-reader subagent rather than fetch_paper
 whenever you want a paper digested. It reads the whole thing in its own context
 window and hands you a page of notes; the full text never enters yours, and you
-do not pay for it again on every later turn. Several readers can run at once.
-Use fetch_paper directly only when you need a specific passage verbatim.
+do not pay for it again on every later turn. Use fetch_paper directly only when
+you need a specific passage verbatim.
+
+**Reading is the slow step, and it is serial.** Each reader takes roughly a
+minute, and asking for several does not make them faster — they are dispatched
+one after another, so six readers is six minutes of someone watching a spinner.
+Three papers, chosen well, is a review. Six is the same review an hour later.
+Open a fourth only when the first three actually disagree.
 
 A paper the reader opened is citable by you afterwards — provenance survives
 delegation even though the text does not.
@@ -51,6 +61,15 @@ End anything substantial with \`bibliography\`, so the references are provably
 the papers you actually consulted.
 
 ## Figures
+
+\`extract_figures\` pulls a paper's own figures out of arXiv's HTML edition. An
+extracted figure is **evidence**; a generated one is decoration. Reach for it
+first whenever the point is to show what a paper actually reported, and label a
+generated substitute as an illustration when no HTML edition exists.
+
+Before drafting anything long, call \`present_outline\`. It pauses for the
+reader, who may edit the structure — and what comes back is what they approved,
+not what you proposed. Work from that.
 
 You can generate an illustration with \`generate_image\`. It pauses for the
 reader's approval before it spends, so calling it *is* asking — never ask in
@@ -99,11 +118,23 @@ function register(agent: Agent): Agent {
 	return agent;
 }
 
-export function createColophon({
+export async function createColophon({
 	thread,
-	capture
+	capture,
+	editedOutline
 }: {
 	thread?: string;
+	/**
+	 * The outline as the reader edited it, when resuming an approved
+	 * `present_outline`.
+	 *
+	 * It has to arrive here because `approveToolCall()` takes no argument
+	 * override — a resumed call executes with the arguments the *model* wrote.
+	 * Without this the approval card would let someone rewrite the structure and
+	 * then silently discard every edit, which is worse than not offering the
+	 * edit at all.
+	 */
+	editedOutline?: Outline;
 	/**
 	 * The tee'd `fetch` the X-ray's context panel reads.
 	 *
@@ -112,9 +143,24 @@ export function createColophon({
 	 * agent is or does.
 	 */
 	capture?: typeof globalThis.fetch;
-} = {}): ColophonRun {
+} = {}): Promise<ColophonRun> {
 	const research = createResearchTools();
 	const remembers = isStorageConfigured() && Boolean(thread);
+
+	/*
+	 * Tools from any configured MCP server, merged with the built-ins.
+	 *
+	 * `toolsForAgent` was written for this and then called by nothing, so
+	 * `MCP_SERVERS` populated a *panel* describing servers the agent could not
+	 * reach. A reader could configure an MCP server, watch it turn up green with
+	 * its tools listed, and never once be able to use it — which is a worse
+	 * failure than the feature being absent, because it is indistinguishable
+	 * from the feature working.
+	 *
+	 * This is what makes `createColophon` async. It returns `{}` immediately
+	 * when nothing is configured, so the common path costs one skipped await.
+	 */
+	const mcp = isMcpConfigured() ? await toolsForAgent() : {};
 
 	// Shares the run's registry, so a paper it reads becomes citable by the
 	// parent — the provenance crosses the delegation boundary, the tokens do not.
@@ -125,10 +171,30 @@ export function createColophon({
 		name: 'Colophon',
 		instructions: INSTRUCTIONS,
 		agents: { paperReader },
+		/*
+		 * Skills and scorers, both of which existed, were tested, and were
+		 * attached to nothing.
+		 *
+		 * `skills` is the one that was actively misleading: the opening screen
+		 * counted them and `SkillsPanel` listed them, so the app advertised two
+		 * capabilities the model had no way to reach — there was no `skill` tool
+		 * on any request. Attaching them is what makes that panel a reading of
+		 * the run rather than a description of a file.
+		 *
+		 * `scorers` measure and never refuse; the refusing is `delivery-gate.ts`'s
+		 * job and stays there. See the head of `scorers.ts` for why both exist.
+		 */
+		skills: [...COLOPHON_SKILLS],
+		scorers: COLOPHON_SCORERS,
 		// Always through the factory: the string and config-object model forms
 		// expose no fetch hook and would silently blind the X-ray. See CLAUDE.md.
 		model: model(undefined, capture),
-		tools: { ...research.tools, ...createImageTools().tools },
+		tools: {
+			...research.tools,
+			...createImageTools().tools,
+			...createWritingTools({ editedOutline }).tools,
+			...mcp
+		},
 		...(remembers ? { memory: agentMemory() } : {})
 	});
 

@@ -56,7 +56,7 @@ curl -c jar -X POST "$ORIGIN/login" -H "Origin: $ORIGIN" -d "password=$PASSWORD"
 path degrades honestly: with no key it is never attempted, and `deliveredAt`
 null with `deliveryError` null is the pair's way of saying so (attempted and
 refused sets the error). `/lab/email` renders the real email as `text/html`, so
-the part I *can* check has been checked by looking at it.
+the part I _can_ check has been checked by looking at it.
 
 **The UI foundation landed**: design tokens, four themes, the session store, and
 three X-ray panels — spend, library, events. Verified live against a real run.
@@ -64,10 +64,10 @@ three X-ray panels — spend, library, events. Verified live against a real run.
 Two facts worth keeping:
 
 - **`verdict` is not delivery.** The gate's answer and whether an email arrived
-  are different columns now. A delivery failure is deliberately *not* a sweep
+  are different columns now. A delivery failure is deliberately _not_ a sweep
   failure — the research happened, and marking it failed would un-advance
   `lastSweptAt` and re-read the whole period tomorrow.
-- **The reference list is what was *cited*, not what was read.** Built from
+- **The reference list is what was _cited_, not what was read.** Built from
   `registry.cited()`. Built from `read()` it silently omitted a paper the prose
   attributed, because that paper was cited from its abstract.
 
@@ -127,8 +127,17 @@ Not yet set: `RESEND_API_KEY`, blob storage credentials.
   conversation — and the reload is a full one, so the session store resets and
   the run is lost. Two ways in, both learned the expensive way: `npm run check`
   runs `svelte-kit sync`, which rewrites `.svelte-kit/generated/*`; and editing
-  a file under `docs/` does it too. This presents as the dev server crashing at
-  random and cost several paid runs before `preview_logs` showed the reload
-  landing at the same second as the edit. Verify in the browser first, then
-  check, test and commit.
+  a file under `docs/` does it too. Verify in the browser first, then check,
+  test and commit.
+- **The dev server no longer "dies at random", and never did.** That symptom —
+  a long streaming turn, then `ERR_CONNECTION_REFUSED` and nothing in the
+  server's own log — was one bug, fixed in `api/agent/stream/+server.ts`:
+  navigating away mid-run cancelled the SSE stream and closed the controller,
+  but `start()` was still suspended in its `for await`, so the heartbeat
+  interval was never cleared. Fifteen seconds later it enqueued into a closed
+  controller and threw _inside a timer callback_, where nothing can catch it,
+  and Node killed the process. The delay is why it looked random: the death
+  landed up to fifteen seconds after the navigation that caused it.
+  All three stream routes now clear their timer in `cancel()` and swallow a
+  closed-controller write. If this ever returns, look there first.
 - Neo has a sharp eye for the book plates; show him before shipping any.

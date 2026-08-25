@@ -2,8 +2,10 @@
 	import { tick } from 'svelte';
 	import { session } from '$lib/agent/session.svelte';
 	import Prose from '$lib/components/Prose.svelte';
-	import ToolChip from './ToolChip.svelte';
+	import ToolCallCard from './ToolCallCard.svelte';
 	import ApprovalCard from './ApprovalCard.svelte';
+	import OutlineCard, { type Outline } from './OutlineCard.svelte';
+	import Preamble from './Preamble.svelte';
 
 	/**
 	 * The conversation.
@@ -42,18 +44,7 @@
 <div bind:this={scroller} class="scroller">
 	<div class="column">
 		{#if session.turns.length === 0}
-			<div class="empty">
-				<p class="co-eyebrow">Colophon</p>
-				<p class="lede">
-					Ask about a field and it will search, open the papers that matter, and write you something
-					with references it can prove.
-				</p>
-				<ul class="suggestions">
-					<li>What changed in sparse autoencoder evaluation this year?</li>
-					<li>Read the two most-cited papers on speculative decoding and compare them.</li>
-					<li>Is there a consensus yet on whether SAE features are causal?</li>
-				</ul>
-			</div>
+			<Preamble onask={(q) => session.send(q)} />
 		{/if}
 
 		{#each session.turns as turn, i (i)}
@@ -63,7 +54,7 @@
 				{#if turn.tools.length}
 					<ul class="tools">
 						{#each turn.tools as tool (tool.id)}
-							<li><ToolChip {tool} /></li>
+							<li><ToolCallCard {tool} /></li>
 						{/each}
 					</ul>
 				{/if}
@@ -81,7 +72,22 @@
 				{/if}
 
 				{#if turn.approval}
-					<ApprovalCard {turn} ondecide={(ok) => session.decide(turn, ok)} />
+					<!--
+						An outline is the one approval whose arguments the reader may
+						rewrite, so it gets its own card. Everything else is approve or
+						decline on the literal brief the model wrote.
+					-->
+					{#if turn.approval.name === 'present_outline'}
+						{@const outline = turn.approval.args as Outline}
+						<OutlineCard
+							title={outline?.title ?? ''}
+							sections={outline?.sections ?? []}
+							onapprove={(edited) => session.decide(turn, true, edited)}
+							ondecline={() => session.decide(turn, false)}
+						/>
+					{:else}
+						<ApprovalCard {turn} ondecide={(ok) => session.decide(turn, ok)} />
+					{/if}
 				{/if}
 
 				{#if turn.error}
@@ -184,33 +190,5 @@
 		margin: 0.6rem 0 0;
 		font-size: 0.6875rem;
 		color: color-mix(in oklab, var(--muted-foreground) 75%, transparent);
-	}
-
-	.empty {
-		padding-top: 2rem;
-	}
-	.lede {
-		margin: 0.6rem 0 1.5rem;
-		max-width: 30rem;
-		font-family: var(--font-serif);
-		font-size: 1.0625rem;
-		line-height: 1.6;
-		color: var(--muted-foreground);
-		text-wrap: pretty;
-	}
-	.suggestions {
-		margin: 0;
-		padding: 0;
-		list-style: none;
-		display: flex;
-		flex-direction: column;
-		gap: 0.5rem;
-	}
-	.suggestions li {
-		font-family: var(--font-serif);
-		font-size: 0.9375rem;
-		color: color-mix(in oklab, var(--muted-foreground) 80%, transparent);
-		padding-left: 0.9rem;
-		border-left: 1px solid var(--border);
 	}
 </style>

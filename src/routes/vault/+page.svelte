@@ -4,6 +4,7 @@
 	import { resolve } from '$app/paths';
 	import { theme } from '$lib/theme.svelte';
 	import Prose from '$lib/components/Prose.svelte';
+	import FigureGallery from '$lib/components/FigureGallery.svelte';
 	import type { PageData } from './$types';
 
 	/**
@@ -228,6 +229,29 @@
 					</ul>
 				{/if}
 			</section>
+
+			<!-- ── what it drew ────────────────────────────────────────────── -->
+			<!--
+				Full width, under both columns.
+
+				The gallery is not a third thing to compare against the first two — it
+				is what the run *made*, and a figure is worth a tile you can actually
+				see. Squeezed into the 20rem column beside `following` it would be a
+				strip of postage stamps; that reading already exists in the flank, one
+				tab over from the library, and is the right size there because the
+				question there is only "did the figure land".
+
+				It loads itself and refetches on the falling edge of a run, so this
+				page's `load` does not have to know figures exist. That is deliberate:
+				the vault's server load is a database read behind auth, and the
+				figures route is already a database read behind the same auth.
+			-->
+			<section class="figures">
+				<header class="head">
+					<span class="co-eyebrow">figures</span>
+				</header>
+				<FigureGallery />
+			</section>
 		</main>
 	{/if}
 </div>
@@ -270,6 +294,12 @@
 	main {
 		flex: 1;
 		display: grid;
+		/* The grid is taller than its rows — `main` is `flex: 1` inside a
+		   `100dvh` column — and auto rows stretch into that slack by default, so
+		   the first row grew a hundred pixels of nothing between the digests and
+		   the figures below them. Rows keep their content height and the slack
+		   collects at the bottom, where it belongs. */
+		align-content: start;
 		grid-template-columns: 20rem 1fr;
 		gap: 2.5rem;
 		max-width: 72rem;
@@ -282,6 +312,11 @@
 			grid-template-columns: 1fr;
 			gap: 2rem;
 		}
+	}
+
+	.figures {
+		grid-column: 1 / -1;
+		min-width: 0;
 	}
 
 	.head {
