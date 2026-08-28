@@ -231,6 +231,77 @@ Updated as milestones land. After a context compaction, read this first.
     question: 0.5 GB holds about 300 images before the vault has room for
     nothing else. Hence the 64 MB cap and the interface.
 
+- **2026-08-25** — deep research wired end to end, and four dead instruments
+  made live. The audit's items 9–12 were one knot: `/api/research` was called
+  by no client code, so the workflow, graph and trace panels described a
+  pipeline the application never ran.
+
+  The composer's mode now reaches `session.send`, which routes to the pipeline;
+  `WorkflowPanel` is mounted with its events, `TracePanel` with real spans, and
+  **the graph draws whichever machine is executing** — the pipeline during a
+  research run, the agent loop otherwise, read from a new `/api/agent/shape`
+  that asks the built agent what it has. Verified on a real 1m 40s run: five
+  stages lighting in turn, twenty-four papers in the library with the three the
+  writer cited marked as such, 89,479 tokens on the spend bar.
+
+  **Four bugs, every one found by running it rather than by testing it:**
+  - The research stream carries two vocabularies on one channel — the
+    pipeline's stages and the trace — and the client fed both to the workflow
+    reducer. A `trace` frame fell through to the branch reading
+    `event.usage.input` and threw, and `consume` put
+    `Cannot read properties of undefined (reading 'input')` on screen in place
+    of the answer.
+  - The graph drew an agent with no memory, always. A child's `onMount` runs
+    before its parent's, and the parent is where `session.restore()` mints the
+    thread — so the shape was fetched with `?thread=` empty and `getMemory()`
+    returned undefined. An `$effect` on the thread replaces the mount.
+  - **`workflow-finish` reports all-zero token usage** for a pipeline whose
+    steps call `agent.generate()`, and publishes no `workflow-step-output`
+    chunks to recover them from. Measured against a throwaway one-step workflow
+    that had just spent 345 tokens. The spend panel read "Nothing spent yet"
+    after a two-minute paid run. Each agent call now reports its own
+    `totalUsage` through a meter injected into the workflow.
+  - The library sat on "Nothing retrieved yet" through a run that read three
+    papers, because the pipeline's retrieval happens inside a step rather than
+    as a tool call, and the projector dropped the step's whole output.
+
+  Also: tracing flipped from opt-in to on-unless-off, `TracePanel` no longer
+  defaults to claiming it is configured, and the run panel prints `—` for tools
+  during a research turn rather than `0` — the pipeline's tool calls are not on
+  this wire, and zero would be a claim rather than a gap.
+
+- **2026-08-25** — the X-ray measured against harnessXray, panel by panel, after
+  Neo's note that the context breakdown was thin and the event sidebar "just
+  terrible".
+
+  **Events open in place.** The payload expands under the row that names it,
+  with the same decomposed/raw pair, instead of a sheet over the app behind a
+  blurred scrim. `Inspector.svelte` and the sheet are gone.
+
+  **The context panel gained the three things that made harnessXray's worth
+  having**: rows that open onto the actual piece, a raw view of the whole body,
+  and a pager across every model call in the turn drawn as one bar per call to
+  scale. Measured on a real run — 5,643 → 7,924 → 9,065 → 9,472 → 9,574 tokens
+  across five calls, 97% of the last a cache hit. Also grouped into system /
+  tool schemas / messages, rows in request order with a share bar rather than
+  sorted by size, and a gauge against the model's input window.
+
+  **Figures render in the timeline.** `extract_figures` returning `{ count: 6 }`
+  is a true summary and a useless one. Verified against arXiv:2404.14082.
+
+  **A third bug, found by looking**: the harness panel's seven tabs ran off the
+  edge of a narrow pane and `mcp` and `trace` were unreachable, 72px past the
+  header, with nothing saying so — the audit's failure in a new costume. The
+  strip now shows what fits behind a `⋯`, and never hides the tab you are on.
+
+  Two things worth keeping:
+  - The in-app preview browser delivers **no `ResizeObserver` callbacks**, not
+    even for a direct style change. Anything measured with `bind:clientWidth`
+    cannot be seen to reflow there; reload at the new width instead.
+  - `sizeOf` counts a string as its own length, not its JSON length, so a
+    piece's `chars` and its `text.length` agree for strings and differ for
+    objects. Asserted in the tests so nobody "fixes" it into agreement.
+
 ## Still needs Neo
 
 - **R2 bucket** — images are in Postgres as a stopgap behind a 64 MB cap

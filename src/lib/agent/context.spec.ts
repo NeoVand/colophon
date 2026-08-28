@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { decompose, apportion, bands } from './context';
+import { decompose, apportion, bands, groupOf, PIECE_TEXT_LIMIT } from './context';
 
 /**
  * The fixture below is a real request body, captured from `/lab/capture?tool`
@@ -228,5 +228,97 @@ describe('more than one system message', () => {
 			]
 		});
 		expect(parts.map((p) => p.label)).toEqual(['system prompt', 'system prompt 2']);
+	});
+});
+
+/**
+ * The text behind a row.
+ *
+ * The panel could name a piece and never show it — "fetch_paper — result, 61%"
+ * with no way to see what those bytes were, which is a claim you have to take
+ * on faith and the exact thing an X-ray is supposed to abolish. The text is off
+ * by default because the pieces of a request *are* the request, so a
+ * decomposition carrying text is the request sent twice, on every call.
+ */
+describe('carrying the piece text', () => {
+	it('carries nothing by default', () => {
+		for (const part of decompose(REQUEST).parts) {
+			expect(part.text).toBeUndefined();
+		}
+	});
+
+	it('carries the system prompt as the string it is', () => {
+		const parts = decompose(REQUEST, { text: true }).parts;
+		expect(parts.find((p) => p.kind === 'system')?.text).toBe(
+			'You are a probe. Answer in one word.'
+		);
+	});
+
+	it('flattens the typed content array a user turn arrives as', () => {
+		// `{ role: 'user', content: [{ type: 'input_text', text }] }` — printing
+		// the wrapper instead of the text would show punctuation where the
+		// question should be.
+		const parts = decompose(REQUEST, { text: true }).parts;
+		expect(parts.find((p) => p.kind === 'user')?.text).toContain('Call the ping tool');
+	});
+
+	it('says what the reasoning reference stands for', () => {
+		// Fourteen bytes standing in for a whole chain of thought. A row that
+		// opened onto the bare id would read as a bug rather than as the point.
+		const text = decompose(REQUEST, { text: true }).parts.find(
+			(p) => p.kind === 'reasoning-ref'
+		)?.text;
+		expect(text).toContain('rs_0f947812fa7d7c09006a866338');
+		expect(text).toMatch(/not re-billed|stays on the provider/i);
+	});
+
+	it('keeps ids identical with and without text', () => {
+		// Load-bearing: the light decomposition rides the stream and the full one
+		// is fetched from `/api/context`, and the panel matches a fetched piece to
+		// a streamed row by id alone. If these ever diverge, every row opens onto
+		// nothing.
+		const light = decompose(REQUEST).parts.map((p) => p.id);
+		const full = decompose(REQUEST, { text: true }).parts.map((p) => p.id);
+		expect(full).toEqual(light);
+	});
+
+	it('clips a huge piece and says how much it cut', () => {
+		const huge = {
+			input: [{ type: 'function_call_output', call_id: 'c1', output: 'x'.repeat(60_000) }]
+		};
+		const part = decompose(huge, { text: true }).parts[0];
+
+		expect(part.text).toHaveLength(PIECE_TEXT_LIMIT);
+		expect(part.clipped).toBe(60_000 - PIECE_TEXT_LIMIT);
+
+		// The row's *size* still counts the whole piece — clipping is a display
+		// bound, not a claim that the piece is smaller than it is.
+		expect(part.chars).toBe(60_000);
+	});
+
+	it('leaves `clipped` off a piece that fitted', () => {
+		expect(decompose(REQUEST, { text: true }).parts[0].clipped).toBeUndefined();
+	});
+});
+
+describe('groupOf', () => {
+	it('puts the three bands a reader asks about where they belong', () => {
+		expect(groupOf('system')).toBe('system');
+		expect(groupOf('tool-schema')).toBe('tools');
+		for (const kind of [
+			'user',
+			'assistant',
+			'tool-call',
+			'tool-result',
+			'reasoning-ref'
+		] as const) {
+			expect(groupOf(kind)).toBe('messages');
+		}
+	});
+
+	it('sends an unrecognised kind to messages rather than dropping it', () => {
+		// An unknown item still occupies the window. A fourth, hidden group would
+		// make the sections add up to less than the request.
+		expect(groupOf('other')).toBe('messages');
 	});
 });

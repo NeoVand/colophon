@@ -1,4 +1,5 @@
-import type { ColophonEvent } from './events';
+import type { ColophonEvent, XrayEvent } from './events';
+import type { WorkflowEvent } from './workflow-events';
 
 /**
  * Reading the run from the browser.
@@ -14,10 +15,25 @@ import type { ColophonEvent } from './events';
  * paying for the same work twice. This reader stops when the stream stops.
  */
 
-export interface RunHandlers {
-	onEvent: (event: ColophonEvent) => void;
-	/** Fired when the server acknowledges before doing any model work. */
-	onReady?: (ms: number) => void;
+/**
+ * Generic over the event type because there are two streams on this wire, not
+ * one: the agent loop publishes `ColophonEvent`, the research pipeline publishes
+ * `WorkflowEvent`, and the framing — `ready` / `event` / `done` / `failed`,
+ * heartbeat comments, the same anti-buffering headers — is identical. Sharing
+ * the reader is what keeps them identical; two hand-rolled parsers would drift
+ * the first time one of them learned about a new frame.
+ */
+export interface RunHandlers<E = ColophonEvent> {
+	onEvent: (event: E) => void;
+	/**
+	 * Fired when the server acknowledges before doing any model work.
+	 *
+	 * `data` is the `ready` frame's payload. The research route puts its `runId`
+	 * there — a workflow run is created before it is started, so the handle
+	 * exists before a token is spent, which the agent route cannot manage
+	 * because Mastra mints that id inside `agent.stream()`.
+	 */
+	onReady?: (ms: number, data: unknown) => void;
 	onError?: (message: string) => void;
 }
 
@@ -26,6 +42,20 @@ export interface RunOptions extends RunHandlers {
 	/** Conversation to continue. Omit for a one-shot with no memory. */
 	thread?: string;
 	signal?: AbortSignal;
+}
+
+/**
+ * The `ready` payload, or nothing.
+ *
+ * Unlike an `event` frame, this one is not load-bearing — it exists to time
+ * first-byte — so a malformed body must not take the run down before it starts.
+ */
+function safeParse(data: string): unknown {
+	try {
+		return JSON.parse(data);
+	} catch {
+		return undefined;
+	}
 }
 
 /** One SSE frame: an optional event name and its data payload. */
@@ -94,10 +124,69 @@ export async function run({
 	await consume(Promise.resolve(response), { onEvent, onReady, onError, startedAt });
 }
 
+/**
+ * Run the deep-research pipeline, and watch it.
+ *
+ * A different endpoint and a different event vocabulary, but deliberately the
+ * same reader: `/api/research` speaks the same SSE framing as `/api/agent/stream`
+ * for the same reason — a research run is minutes long and makes a dozen
+ * provider calls, so it is the request in this application most likely to be
+ * sitting inside a corporate proxy's buffer.
+ *
+ * The `thread` it takes is **not** a conversation to continue. The workflow has
+ * no memory: it scopes, searches, selects, reads and writes from the question
+ * alone, every time. It travels only as the key the server files this run's
+ * captured requests under, so the context panel can read a piece back.
+ */
+export async function research({
+	question,
+	thread,
+	signal,
+	onEvent,
+	onReady,
+	onError
+}: {
+	question: string;
+	/**
+	 * Not a conversation to continue — the pipeline has no memory. It is only
+	 * the key the server files this run's captured requests under, so the
+	 * context panel can read them back.
+	 */
+	thread?: string;
+	signal?: AbortSignal;
+	/*
+	 * Two vocabularies on one channel: the pipeline's own stages, and the trace
+	 * frames every endpoint sends. Declaring both is not a formality — typing
+	 * this as `WorkflowEvent` alone is what let a `trace` frame reach the
+	 * workflow reducer and take a real run down. See `XrayEvent`.
+	 */
+} & RunHandlers<WorkflowEvent | XrayEvent>): Promise<void> {
+	const startedAt = performance.now();
+
+	const response = await fetch('/api/research', {
+		method: 'POST',
+		headers: { 'content-type': 'application/json' },
+		body: JSON.stringify({ question, thread }),
+		signal
+	});
+
+	await consume<WorkflowEvent | XrayEvent>(Promise.resolve(response), {
+		onEvent,
+		onReady,
+		onError,
+		startedAt
+	});
+}
+
 /** Read an SSE body to completion, dispatching each frame. */
-async function consume(
+async function consume<E = ColophonEvent>(
 	pending: Promise<Response>,
-	{ onEvent, onReady, onError, startedAt = performance.now() }: RunHandlers & { startedAt?: number }
+	{
+		onEvent,
+		onReady,
+		onError,
+		startedAt = performance.now()
+	}: RunHandlers<E> & { startedAt?: number }
 ): Promise<void> {
 	const response = await pending;
 
@@ -126,10 +215,10 @@ async function consume(
 
 				switch (frame.name) {
 					case 'ready':
-						onReady?.(performance.now() - startedAt);
+						onReady?.(performance.now() - startedAt, safeParse(frame.data));
 						break;
 					case 'event':
-						onEvent(JSON.parse(frame.data) as ColophonEvent);
+						onEvent(JSON.parse(frame.data) as E);
 						break;
 					case 'failed':
 						onError?.((JSON.parse(frame.data) as { message: string }).message);

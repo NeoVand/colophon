@@ -4,6 +4,9 @@ import { isModelConfigured } from '$lib/server/model';
 import { SourceRegistry } from '$lib/agent/sources';
 import { createResearchWorkflow } from '$lib/agent/research-workflow';
 import { projectWorkflow } from '$lib/agent/workflow-events';
+import { addUsage, readUsage, type Usage } from '$lib/agent/events';
+import { createCapture } from '$lib/agent/capture';
+import { recorderFor, traceFor, tracingState, type OpenSpan } from '$lib/server/tracing';
 
 /**
  * Running the deep-research pipeline for real, and letting you watch it.
@@ -55,9 +58,19 @@ export const POST: RequestHandler = async ({ request }) => {
 		error(503, 'OPENAI_API_KEY is not configured on the server.');
 	}
 
-	const { question, detail = 'chat' } = (await request.json()) as {
+	const {
+		question,
+		detail = 'chat',
+		thread
+	} = (await request.json()) as {
 		question?: string;
 		detail?: 'chat' | 'full';
+		/**
+		 * Not used to remember anything — the pipeline has no memory. It is the
+		 * key the wire capture is filed under, so `/api/context` can find this
+		 * run's requests when a row in the context panel is expanded.
+		 */
+		thread?: string;
 	};
 	if (!question?.trim()) error(400, 'A question is required.');
 
@@ -122,6 +135,17 @@ export const POST: RequestHandler = async ({ request }) => {
 			const heartbeat = setInterval(() => write(': keep-alive\n\n'), HEARTBEAT_MS);
 			silence = () => clearInterval(heartbeat);
 
+			/*
+			 * The trace's root, and the key it was filed under.
+			 *
+			 * Out here because `finally` has to close the root whether the pipeline
+			 * finished, threw, or was abandoned — a root left open draws to the
+			 * frontier for ever and makes every child look instantaneous beside it.
+			 * Both stay undefined if the run never got as far as being created.
+			 */
+			let root: OpenSpan | undefined;
+			let runId = '';
+
 			try {
 				/*
 				 * A registry per run, never shared.
@@ -134,7 +158,28 @@ export const POST: RequestHandler = async ({ request }) => {
 				 * boundary that the paper's text does not.
 				 */
 				const registry = new SourceRegistry();
-				const workflow = createResearchWorkflow({ registry });
+
+				/*
+				 * The bill, added up here because the engine does not add it up.
+				 *
+				 * `workflow-finish` reports all-zero usage for this pipeline — see the
+				 * note on `ResearchDeps.meter`, where the measurement is recorded — so
+				 * every agent call reports its own `totalUsage` into this instead.
+				 * Five numbers, in Mastra's own shape, through the same `readUsage`
+				 * the chat stream uses, so the two modes cannot drift apart on what a
+				 * token is.
+				 */
+				let spent: Usage = { input: 0, output: 0, total: 0, reasoning: 0, cached: 0 };
+				// The wire, tee'd — the same seam the chat route uses, for the same
+				// reason. Without it the context panel says "Nothing sent yet" through
+				// a run that made a dozen provider calls.
+				const capture = createCapture({ key: thread });
+
+				const workflow = createResearchWorkflow({
+					registry,
+					capture: capture.fetch,
+					meter: (usage) => (spent = addUsage(spent, readUsage(usage)))
+				});
 				const run = await workflow.createRun();
 				cancelRun = () => run.cancel();
 
@@ -142,9 +187,71 @@ export const POST: RequestHandler = async ({ request }) => {
 				// buffering proxy from a slow model rather than guessing.
 				send('ready', { at: Date.now(), runId: run.runId, workflowId: workflow.id });
 
+				/*
+				 * ── The trace, off the engine's own clock ─────────────────────────
+				 *
+				 * The sibling of the block in `api/agent/stream`, and the better half
+				 * of the pair: an agent's step boundaries have to be read off a chunk
+				 * stream, but a workflow step *publishes* the two timestamps the
+				 * engine took around it. `startedAt` and `endedAt` here are measured
+				 * inside the step, on one machine, so a duration built from them is
+				 * free of both clock skew and the time the frame spent on the wire.
+				 *
+				 * The root is stamped from this process's `Date.now()`, which is the
+				 * same clock the engine used — so the steps nest inside it correctly
+				 * and the gaps between them are real gaps rather than an artefact of
+				 * two clocks disagreeing.
+				 */
+				const tracing = tracingState();
+				send('event', { k: 'trace', ...tracing });
+
+				runId = run.runId;
+				const recorder = recorderFor(runId, {
+					onSpan: (span) => send('event', { k: 'span', span })
+				});
+				root = recorder.start({
+					name: workflow.id,
+					kind: 'workflow_run',
+					attributes: { question: question.trim(), runId: run.runId }
+				});
+
+				/** Open step spans by step id, with the engine's start kept beside each. */
+				const stages = new Map<string, { span: OpenSpan; startedAt: number }>();
+
 				const output = run.stream({ inputData: { question: question.trim() } });
 
 				for await (const chunk of output.fullStream) {
+					/*
+					 * Recorded from the projected event, before the detail branch, so
+					 * the trace is the same whichever wire the caller asked for. The
+					 * projection is where the engine's two timestamps are already read
+					 * and range-checked; doing it again here would be a second place to
+					 * get `endedAt >= startedAt` wrong.
+					 */
+					const projected = projectWorkflow(chunk);
+					if (projected?.k === 'step-start') {
+						// `at` is the engine's own clock, or 0 when the chunk did not
+						// carry one — in which case now is the closest honest answer.
+						const startedAt = projected.at || Date.now();
+						stages.set(projected.step, {
+							startedAt,
+							span: root.child({ name: projected.step, kind: 'workflow_step', startedAt })
+						});
+					} else if (projected?.k === 'step-finish') {
+						const stage = stages.get(projected.step);
+						stage?.span.end({
+							failed: projected.state === 'failed',
+							// Reconstructed from the engine's own duration rather than
+							// stamped now, so the bar is the step's length and not the
+							// step's length plus however long the frame took to arrive.
+							// `ms` is 0 when the engine did not report both timestamps;
+							// then, and only then, the local clock is the fallback.
+							endedAt: projected.ms ? stage.startedAt + projected.ms : Date.now(),
+							attributes: { state: projected.state }
+						});
+						stages.delete(projected.step);
+					}
+
 					if (detail === 'full') {
 						// Lab mode, and honestly lossy in one place: a failed step's
 						// `error` is a live `Error`, which `JSON.stringify` renders as
@@ -161,14 +268,44 @@ export const POST: RequestHandler = async ({ request }) => {
 					 * the next step's `payload`. Five rows and a stopwatch do not need
 					 * any of it.
 					 */
-					const event = projectWorkflow(chunk);
-					if (event) send('event', event);
+					if (!projected) continue;
+
+					/*
+					 * The engine's zeros, replaced by what was actually spent.
+					 *
+					 * Only when the engine reported nothing: if a later Mastra learns to
+					 * count agents called inside a step, its number is the one to
+					 * believe — it can see calls this meter cannot — and this quietly
+					 * steps aside rather than having to be remembered and removed.
+					 */
+					if (projected.k === 'workflow-done' && !projected.usage.total && spent.total) {
+						projected.usage = {
+							input: spent.input,
+							output: spent.output,
+							total: spent.total
+						};
+					}
+
+					send('event', projected);
 				}
 
 				send('done', { at: Date.now() });
 			} catch (cause) {
 				send('failed', { message: cause instanceof Error ? cause.message : String(cause) });
 			} finally {
+				/*
+				 * A step still open here is one the run died inside, and it is left
+				 * open on purpose: drawn to the frontier, it says which stage the
+				 * pipeline was in when it stopped. The root is closed, so the trace
+				 * has a length.
+				 */
+				root?.end();
+				send('event', {
+					k: 'trace',
+					...tracingState(),
+					truncated: traceFor(runId).truncated
+				});
+
 				const wasOpen = open;
 				open = false;
 				cancelRun = undefined;

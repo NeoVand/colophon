@@ -96,7 +96,11 @@
 		}
 
 		for (const event of events) {
-			if (event.k === 'workflow-done') continue;
+			// Only the two that name a stage. A frame with no `step` — the trace
+			// events that ride on the same stream once did exactly this — would
+			// otherwise be given a row keyed on `undefined` and drawn as a real
+			// stage that does not exist.
+			if (event.k !== 'step-start' && event.k !== 'step-finish') continue;
 
 			let row = find(event.step);
 			if (!row) {

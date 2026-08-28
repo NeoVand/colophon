@@ -49,6 +49,34 @@ export function safeHref(url: string): string | undefined {
 	return undefined;
 }
 
+/**
+ * Figure sources, and only this app's own.
+ *
+ * `extract_figures` and `generate_image` both publish `/figures/<name>` and the
+ * agent is told, in its instructions and in both tool descriptions, to embed
+ * the result with `![caption](path)`. It does exactly that — and the renderer
+ * had no image rule at all, so a run that pulled six real figures out of a
+ * paper printed six lines of literal markdown into the conversation. The app
+ * asked for something it could not display.
+ *
+ * **Only `/figures/`.** Not `https://`, deliberately, and this is the one rule
+ * here worth arguing about. The text being rendered is written by a language
+ * model out of paper abstracts, and an `<img>` is a request the reader's
+ * browser makes without being asked: a remote source is a tracking pixel at
+ * best and a channel for putting text into someone else's logs at worst.
+ * Anything but our own store renders as literal markdown, which is ugly and
+ * cannot hurt anyone — the same trade `safeHref` makes for `javascript:`.
+ *
+ * The path is matched rather than parsed, and the character class is what does
+ * the work: no whitespace, no quotes, no angle brackets, and no `..`, so it
+ * cannot climb out of the store or break out of the attribute it lands in.
+ */
+export function safeSrc(url: string): string | undefined {
+	const trimmed = url.trim();
+	if (!/^\/figures\/[^\s"'<>]+$/.test(trimmed)) return undefined;
+	return trimmed.includes('..') ? undefined : trimmed;
+}
+
 function open(tag: string, styles: StyleMap, extra = ''): string {
 	const style = styles[tag];
 	return `<${tag}${style ? ` style="${style}"` : ''}${extra ? ` ${extra}` : ''}>`;
@@ -73,7 +101,7 @@ const HOLD = '\u0000';
  * emphasis, so the held HTML is never double-escaped and the visible text
  * always is.
  */
-function inline(source: string, styles: StyleMap): string {
+function inline(source: string, styles: StyleMap, images: boolean): string {
 	const held: string[] = [];
 	const hold = (html: string): string => `${HOLD}${held.push(html) - 1}${HOLD}`;
 
@@ -88,14 +116,47 @@ function inline(source: string, styles: StyleMap): string {
 		hold(`${open('code', styles)}${escapeHtml(code)}</code>`)
 	);
 
-	// 2. Explicit links. The label is still inline markup; the href is not.
+	// 2. Images, before links — `![alt](src)` contains `[alt](src)`, so a link
+	//    rule running first would eat the inside and leave a stray `!`.
+	text = text.replace(/!\[([^\]]*)\]\(([^)\s]+)\)/g, (whole: string, alt: string, url: string) => {
+		const src = safeSrc(url);
+		if (!src) {
+			/*
+			 * Held as literal text, not returned for later rules to pick over.
+			 *
+			 * `![alt](url)` contains `[alt](url)`, so simply declining leaves the
+			 * link rule to claim the inside — a refused remote image came out as a
+			 * stray `!` followed by a working link to the same address. Refusing
+			 * an image and then rendering a link to it is not a refusal, it is a
+			 * detour, and the scruffy `!` was the tell.
+			 */
+			return hold(escapeHtml(whole));
+		}
+		if (!images) {
+			// An email cannot serve a relative path, so the alternative there is
+			// the caption rather than a broken picture. Said plainly rather than
+			// left as a silent difference between the two renderings.
+			return hold(escapeHtml(alt));
+		}
+		return hold(
+			open(
+				'img',
+				styles,
+				`src="${escapeHtml(src)}" alt="${escapeHtml(alt)}" loading="lazy" decoding="async"`
+			)
+		);
+	});
+
+	// 3. Explicit links. The label is still inline markup; the href is not.
 	text = text.replace(/\[([^\]]*)\]\(([^)\s]+)\)/g, (whole: string, label: string, url: string) => {
 		const href = safeHref(url);
 		if (!href) return whole;
-		return hold(`${open('a', styles, `href="${escapeHtml(href)}"`)}${inline(label, styles)}</a>`);
+		return hold(
+			`${open('a', styles, `href="${escapeHtml(href)}"`)}${inline(label, styles, images)}</a>`
+		);
 	});
 
-	// 3. Bare URLs, which is how a bibliography actually writes them. The
+	// 4. Bare URLs, which is how a bibliography actually writes them. The
 	//    trailing class excludes sentence punctuation so "see https://x.org."
 	//    does not put the full stop inside the link.
 	text = text.replace(
@@ -106,7 +167,7 @@ function inline(source: string, styles: StyleMap): string {
 
 	text = escapeHtml(text);
 
-	// 4. Emphasis. Bold before italic, or `**x**` leaves stray asterisks.
+	// 5. Emphasis. Bold before italic, or `**x**` leaves stray asterisks.
 	text = text.replace(
 		/\*\*([^*]+)\*\*/g,
 		(_, s: string) => `${open('strong', styles)}${s}</strong>`
@@ -224,24 +285,40 @@ function blocksOf(markdown: string): Block[] {
 	return blocks;
 }
 
-export function renderMarkdown(markdown: string, styles: StyleMap = {}): string {
+export function renderMarkdown(
+	markdown: string,
+	styles: StyleMap = {},
+	{
+		/**
+		 * Render `![alt](/figures/…)` as a picture.
+		 *
+		 * True for the web, where the store is one origin away. False for the
+		 * email, where a relative source cannot resolve — there the caption is
+		 * rendered instead, which is a smaller thing than a broken image icon and
+		 * an honest one. Making figures appear in a digest needs an absolute
+		 * origin, which this app has no configuration for; when it does, this
+		 * becomes a base URL rather than a boolean.
+		 */
+		images = true
+	}: { images?: boolean } = {}
+): string {
 	const html: string[] = [];
 
 	for (const block of blocksOf(markdown)) {
 		switch (block.kind) {
 			case 'heading': {
 				const tag = `h${block.level}`;
-				html.push(`${open(tag, styles)}${inline(block.lines[0], styles)}</${tag}>`);
+				html.push(`${open(tag, styles)}${inline(block.lines[0], styles, images)}</${tag}>`);
 				break;
 			}
 			case 'para':
-				html.push(`${open('p', styles)}${inline(block.lines.join(' '), styles)}</p>`);
+				html.push(`${open('p', styles)}${inline(block.lines.join(' '), styles, images)}</p>`);
 				break;
 			case 'ul':
 			case 'ol': {
 				const tag = block.kind;
 				const items = block.lines
-					.map((item) => `${open('li', styles)}${inline(item, styles)}</li>`)
+					.map((item) => `${open('li', styles)}${inline(item, styles, images)}</li>`)
 					.join('');
 				html.push(`${open(tag, styles)}${items}</${tag}>`);
 				break;
@@ -249,7 +326,7 @@ export function renderMarkdown(markdown: string, styles: StyleMap = {}): string 
 			case 'quote':
 				html.push(
 					`${open('blockquote', styles)}${open('p', styles)}` +
-						`${inline(block.lines.join(' '), styles)}</p></blockquote>`
+						`${inline(block.lines.join(' '), styles, images)}</p></blockquote>`
 				);
 				break;
 			case 'code':

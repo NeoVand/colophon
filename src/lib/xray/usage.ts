@@ -52,6 +52,35 @@ export const RATES: Record<string, Rates> = {
 /** The date the table above was last verified. See the warning on `RATES`. */
 export const RATES_REVIEWED = '2026-08-19';
 
+/**
+ * ⚠ PROVIDER LIMITS — SAME WARNING AS THE RATES ABOVE ⚠
+ *
+ * How many *input* tokens fit in one request. Published numbers, not something
+ * Colophon can measure, so the same rule applies: change a number here and
+ * change `RATES_REVIEWED` in the same commit.
+ *
+ * It is the input window specifically — output is budgeted separately — because
+ * the only thing this is used for is the context gauge, which measures what we
+ * send. And `windowFor` returns nothing for an unknown model rather than
+ * guessing, so the gauge disappears instead of drawing a bar against a number
+ * somebody made up. A context panel that overstated the headroom would be
+ * exactly the plausible-and-wrong readout this app exists to replace.
+ */
+export const WINDOWS: Record<string, number> = {
+	'gpt-5': 272_000,
+	'gpt-5-mini': 272_000,
+	'gpt-5-nano': 272_000
+};
+
+/** The input window for a model id, or nothing if it is not one we have listed. */
+export function windowFor(model: string | undefined): number | undefined {
+	if (!model) return undefined;
+	const match = Object.keys(WINDOWS)
+		.filter((id) => model === id || model.startsWith(`${id}-`))
+		.sort((a, b) => b.length - a.length)[0];
+	return match ? WINDOWS[match] : undefined;
+}
+
 /** What an unqualified price means here. */
 export const DEFAULT_RATES: Rates = RATES['gpt-5'];
 

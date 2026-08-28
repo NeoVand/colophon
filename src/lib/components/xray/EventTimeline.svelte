@@ -2,11 +2,13 @@
 	import type { IconSvgElement } from '@hugeicons/svelte';
 	import { HugeiconsIcon } from '@hugeicons/svelte';
 	import { session, type LoggedEvent } from '$lib/agent/session.svelte';
-	import { subagentOf } from '$lib/agent/events';
+	import { subagentOf, type ColophonEvent } from '$lib/agent/events';
 	import { toolMeta } from '$lib/agent/tool-meta';
 	import { ICON } from '$lib/icons';
 	import PanelFrame from '$lib/components/ui/PanelFrame.svelte';
 	import EmptyState from '$lib/components/ui/EmptyState.svelte';
+	import EventDetail from './EventDetail.svelte';
+	import EventMedia from './EventMedia.svelte';
 	import Toolbar from '$lib/components/ui/Toolbar.svelte';
 	import IconButton from '$lib/components/ui/IconButton.svelte';
 
@@ -41,12 +43,23 @@
 	 */
 	let filter = $state('tools');
 
-	let {
-		/** A row was clicked; the page opens the inspector on that event. */
-		onselect,
-		/** The `seq` currently open, so the row can show it is the one. */
-		selected
-	}: { onselect?: (seq: number) => void; selected?: number } = $props();
+	/**
+	 * The row that is open, by `seq`.
+	 *
+	 * Owned here rather than lifted to the page, and that is the whole change:
+	 * the payload used to open in a sheet over the app, behind a blurred scrim,
+	 * which took the run off screen in order to show a piece of the run. Nothing
+	 * outside this panel needs to know which row is open, so nothing outside it
+	 * is told.
+	 *
+	 * By `seq` rather than by the row object so the panel keeps following the
+	 * live log: the same event re-derived on the next frame is still the one
+	 * that is open.
+	 */
+	let openSeq = $state<number | undefined>();
+
+	/** The event behind the open row, or nothing when it has scrolled out of the log. */
+	const openEvent = $derived(session.events.find((e) => e.seq === openSeq));
 
 	interface Row {
 		key: string;
@@ -75,6 +88,14 @@
 		icon?: IconSvgElement;
 		/** The tool's blurb, on hover. Nothing on screen has to carry it. */
 		hint?: string;
+		/**
+		 * The event itself, when it produced something worth *seeing*.
+		 *
+		 * Carried on the row rather than looked up at render time so the media
+		 * strip cannot disagree with the row it hangs under — they are built from
+		 * the same event in the same pass.
+		 */
+		media?: ColophonEvent;
 	}
 
 	/** Fold a run of text deltas into one row that counts them. */
@@ -151,7 +172,10 @@
 						tone: event.failed ? '--co-error' : '--co-library',
 						lane: event.name ? subagentOf(event.name) : undefined,
 						icon: event.name ? toolMeta(event.name).icon : undefined,
-						hint: event.name ? toolMeta(event.name).blurb : undefined
+						hint: event.name ? toolMeta(event.name).blurb : undefined,
+						// `EventMedia` decides whether there is anything to draw; the row
+						// does not need to know which tools produce pictures.
+						media: event
 					});
 					break;
 				case 'step':
@@ -175,6 +199,28 @@
 						detail: 'run suspended',
 						tone: '--co-approval'
 					});
+					break;
+				case 'stage':
+					/*
+					 * A pipeline stage, on the same timeline as everything else.
+					 *
+					 * Only the *end* of a stage gets a row. A start and a finish for
+					 * five stages is ten rows describing five things, and the finish is
+					 * the one carrying the duration — which is the whole reason to look
+					 * here rather than at the pipeline panel, where the stage is already
+					 * drawn as a mark that lights.
+					 */
+					if (event.state !== 'start') {
+						rows.push({
+							key: `sg${seq}`,
+							seq,
+							at,
+							kind: event.state === 'failed' ? 'error' : 'stage',
+							label: `stage · ${event.step}`,
+							detail: event.error ?? (event.ms ? `${(event.ms / 1000).toFixed(1)}s` : event.state),
+							tone: event.state === 'failed' ? '--co-error' : '--co-subagent'
+						});
+					}
 					break;
 				case 'tripwire':
 					rows.push({
@@ -376,9 +422,11 @@
 					class="row"
 					class:laned={Boolean(row.lane)}
 					class:openable={row.seq !== undefined}
-					class:on={row.seq !== undefined && row.seq === selected}
+					class:on={row.seq !== undefined && row.seq === openSeq}
 					style:--tone="var({row.tone})"
-					onclick={row.seq === undefined ? undefined : () => onselect?.(row.seq!)}
+					onclick={row.seq === undefined
+						? undefined
+						: () => (openSeq = openSeq === row.seq ? undefined : row.seq)}
 				>
 					<span class="co-num t">{(row.at / 1000).toFixed(1)}</span>
 					<!-- A tool call gets its own glyph and everything else gets the tick.
@@ -394,6 +442,24 @@
 					<span class="label" title={row.hint}>{row.label}</span>
 					{#if row.detail}<span class="detail">{row.detail}</span>{/if}
 				</svelte:element>
+
+				{#if row.media}
+					<!-- What the run produced, on the same line as what it cost. Shown
+					     whether or not the row is open: a figure is not a payload you go
+					     looking for, it is the result itself. -->
+					<EventMedia event={row.media} />
+				{/if}
+
+				{#if row.seq !== undefined && row.seq === openSeq && openEvent}
+					<!--
+						The payload, exactly where the click was — see the head of
+						`EventDetail`. Keyed on `seq` so opening another row gives a fresh
+						tree rather than one carrying the last row's opened branches.
+					-->
+					{#key openEvent.seq}
+						<EventDetail event={openEvent.event} tone={row.tone} />
+					{/key}
+				{/if}
 			{/each}
 		</div>
 	{/if}

@@ -33,6 +33,18 @@
  *    engine, and `workflow-finish` is where the run's status, its token usage
  *    and the workflow's own return value arrive.
  *
+ * **Correction to (3), from a run rather than from the types.** The usage on
+ * `workflow-finish` is real but it is not this pipeline's bill. A one-step
+ * workflow whose step calls `agent.generate()` finished reporting
+ * `{ inputTokens: 0, outputTokens: 0, totalTokens: 0 }` after spending 345
+ * tokens, and published no `workflow-step-output` chunks at all — so there is
+ * no nested feed to recover them from either. Mastra counts what it runs
+ * itself; an agent called inside an `execute` body is opaque to it. The numbers
+ * are read off each `generate()` instead and summed in `api/research`, which is
+ * why that endpoint overwrites this field when it is zero. Left as-is here
+ * because this file is a projection of what the engine said, and what the
+ * engine said is zero.
+ *
  * All three were then confirmed by running a two-step workflow against the
  * installed engine and printing every chunk: the payload keys, the timestamps,
  * the absent `workflow-step-finish` and the synthesised terminal frame are
@@ -62,6 +74,27 @@ export interface WorkflowUsage {
  */
 export type StepState = 'done' | 'failed' | 'suspended' | 'skipped';
 
+/**
+ * A paper this run met, as much of it as a library panel needs.
+ *
+ * The pipeline's papers were being thrown away with the rest of a step's
+ * output, so the library panel sat on "Nothing retrieved yet" through a
+ * two-minute run that searched, chose, and read three papers. That is a panel
+ * describing a machine rather than reading one, which is the failure this
+ * whole X-ray exists to avoid.
+ *
+ * Only the identifying fields cross the wire. The abstracts in a `search`
+ * step's output are six hundred characters each across two dozen rows, and the
+ * panel shows none of them.
+ */
+export interface StepPaper {
+	id: string;
+	title?: string;
+	year?: number;
+	depth: 'listed' | 'read';
+	cited?: boolean;
+}
+
 export type WorkflowEvent =
 	/**
 	 * A stage began. `at` is the engine's own `Date.now()`, or 0 when the chunk
@@ -73,7 +106,15 @@ export type WorkflowEvent =
 	 * A stage ended. `ms` is measured across the engine's two timestamps, so it
 	 * is free of both clock skew and the time the frame spent on the wire.
 	 */
-	| { k: 'step-finish'; step: string; state: StepState; ms: number; error?: string }
+	| {
+			k: 'step-finish';
+			step: string;
+			state: StepState;
+			ms: number;
+			error?: string;
+			/** Papers named in this step's output, if it named any. See `StepPaper`. */
+			papers?: StepPaper[];
+	  }
 	/**
 	 * The pipeline finished — successfully or not.
 	 *
@@ -131,6 +172,65 @@ function messageOf(error: unknown): string | undefined {
 	return typeof e.message === 'string' ? e.message : 'step failed';
 }
 
+/**
+ * The papers a step's output names, read by shape rather than by step name.
+ *
+ * By shape on purpose. This file's whole discipline is that it knows nothing
+ * about `scope` or `write`, so that a renamed step does not silently stop
+ * reporting — and three field names is a smaller thing to keep in step with
+ * `research-workflow.ts` than five step ids would be. A step that grows a
+ * `found` array gets a library entry with no edit here; one that loses it stops
+ * contributing, visibly.
+ *
+ *   found     [{ id, title, year }]   candidates a search turned up  → listed
+ *   notes     [{ arxivId }]           papers a reader opened in full → read
+ *   citedIds  [string]                what the writer proved it cited
+ *
+ * Bounded, because a pathological run must not push a megabyte to draw a list.
+ */
+const MAX_PAPERS_PER_STEP = 60;
+
+function readPapers(output: unknown): StepPaper[] | undefined {
+	const o = output as Record<string, unknown> | undefined;
+	if (!o || typeof o !== 'object') return undefined;
+
+	const papers: StepPaper[] = [];
+	const push = (paper: StepPaper) => {
+		if (papers.length < MAX_PAPERS_PER_STEP) papers.push(paper);
+	};
+
+	if (Array.isArray(o.found)) {
+		for (const row of o.found as Record<string, unknown>[]) {
+			const id = str(row?.id);
+			if (id) {
+				push({
+					id,
+					...(str(row.title) ? { title: str(row.title) } : {}),
+					...(typeof row.year === 'number' ? { year: row.year } : {}),
+					depth: 'listed'
+				});
+			}
+		}
+	}
+
+	if (Array.isArray(o.notes)) {
+		for (const row of o.notes as Record<string, unknown>[]) {
+			const id = str(row?.arxivId);
+			if (id) push({ id, depth: 'read' });
+		}
+	}
+
+	if (Array.isArray(o.citedIds)) {
+		for (const id of o.citedIds) {
+			// Cited, and therefore read: `cite` refuses anything that did not enter
+			// the run, so an id here is a paper the pipeline actually opened.
+			if (typeof id === 'string' && id) push({ id, depth: 'read', cited: true });
+		}
+	}
+
+	return papers.length ? papers : undefined;
+}
+
 function readUsage(raw: unknown): WorkflowUsage {
 	const u = raw as Record<string, number> | undefined;
 	return {
@@ -170,6 +270,7 @@ export function projectWorkflow(chunk: unknown): WorkflowEvent | null {
 
 			const started = num(p.startedAt);
 			const ended = num(p.endedAt);
+			const papers = readPapers(p.output);
 			return {
 				k: 'step-finish',
 				step,
@@ -177,7 +278,8 @@ export function projectWorkflow(chunk: unknown): WorkflowEvent | null {
 				// Both timestamps or nothing: a duration computed from one of them
 				// and a local clock is worse than an absent duration.
 				ms: started && ended && ended >= started ? ended - started : 0,
-				...(state === 'failed' ? { error: messageOf(p.error) } : {})
+				...(state === 'failed' ? { error: messageOf(p.error) } : {}),
+				...(papers ? { papers } : {})
 			};
 		}
 

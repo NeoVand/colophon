@@ -119,7 +119,9 @@ export interface DigestMail {
  * background reaches the edges on mobile while the measure stays readable.
  */
 export function renderDigestEmail(mail: DigestMail): { html: string; text: string } {
-	const body = renderMarkdown(mail.markdown, EMAIL_STYLES);
+	// No inline figures: a digest's `![caption](/figures/…)` is a relative path,
+	// which nothing in an inbox can resolve. The caption is rendered instead.
+	const body = renderMarkdown(mail.markdown, EMAIL_STYLES, { images: false });
 	const label = `font:500 11px/1.4 ${MONO};letter-spacing:0.08em;text-transform:uppercase;color:${MUTED}`;
 
 	const footerBits = [

@@ -27,8 +27,30 @@
 
 	const usage = $derived(session.usage);
 
-	/** Steps of the agent loop, counted off the events rather than reported. */
-	const steps = $derived(session.events.filter((e) => e.event.k === 'step').length);
+	/**
+	 * Steps, counted off the events rather than reported.
+	 *
+	 * Both machines' steps, because both are runs and this is the panel you
+	 * glance at to know one is happening. A research turn publishes `stage`
+	 * events instead of `step` ones, so counting only the latter left this
+	 * reading `0` beside a five-stage pipeline that had just finished — a wrong
+	 * number, not a missing one, which is worse.
+	 */
+	const steps = $derived(
+		session.events.filter(
+			(e) => e.event.k === 'step' || (e.event.k === 'stage' && e.event.state !== 'start')
+		).length
+	);
+
+	/**
+	 * The pipeline's tool use is not on this wire.
+	 *
+	 * `search_papers` and `cite` both run inside a research step, as calls the
+	 * workflow made rather than calls the model asked for, and nothing publishes
+	 * them. So the honest readout for a research turn is "unknown" — printing
+	 * `0` would claim a run that searched and cited used no tools at all.
+	 */
+	const toolsKnown = $derived(session.mode !== 'research');
 
 	/** Provider calls, which is not the same number: a step can retry. */
 	const calls = $derived(session.events.filter((e) => e.event.k === 'context').length);
@@ -131,8 +153,17 @@
 
 				<li class="gap">
 					<span class="co-eyebrow k">tools</span>
-					<span class="co-num v">
-						{toolCalls}{#if live}<span class="sub live"> · {live} live</span>{/if}
+					<span
+						class="co-num v"
+						title={toolsKnown
+							? 'Tool calls this conversation'
+							: 'The pipeline calls its tools inside a step, and does not publish them'}
+					>
+						{#if toolsKnown}
+							{toolCalls}{#if live}<span class="sub live"> · {live} live</span>{/if}
+						{:else}
+							<span class="dim">—</span>
+						{/if}
 					</span>
 				</li>
 				<li>

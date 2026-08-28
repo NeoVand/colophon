@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { absorb, type KnownPaper } from './library';
+import { absorb, absorbPapers, type KnownPaper } from './library';
 
 /**
  * These fixtures are copied from what the tools in `tools.ts` actually return,
@@ -158,5 +158,67 @@ describe('identity', () => {
 		absorb(library, 'search_papers', null);
 		absorb(library, 'search_papers', 'not an object');
 		expect(library).toEqual([]);
+	});
+});
+
+/**
+ * The pipeline's door into the same library.
+ *
+ * Two doors, one room: the chat agent's papers arrive as tool results and the
+ * pipeline's arrive on step outputs, and the rules that make the library a
+ * truthful readout — depth only increases, a paper met twice is one paper —
+ * have to hold whichever way in a paper came.
+ */
+describe('absorbPapers', () => {
+	it('lists what a search step turned up', () => {
+		const library: KnownPaper[] = [];
+		absorbPapers(library, [{ id: '2401.00001', title: 'A paper', year: 2024, depth: 'listed' }]);
+
+		expect(library).toEqual([
+			expect.objectContaining({
+				id: '2401.00001',
+				title: 'A paper',
+				year: 2024,
+				depth: 'listed',
+				cited: false,
+				url: 'https://arxiv.org/abs/2401.00001'
+			})
+		]);
+	});
+
+	it('promotes a listed paper to read rather than adding it twice', () => {
+		// A search finds it, then a reader opens it. One paper, two facts.
+		const library: KnownPaper[] = [];
+		absorbPapers(library, [{ id: '2401.00001', title: 'A paper', depth: 'listed' }]);
+		absorbPapers(library, [{ id: '2401.00001', depth: 'read' }]);
+
+		expect(library).toHaveLength(1);
+		expect(library[0].depth).toBe('read');
+		// And the title survives the second, thinner mention.
+		expect(library[0].title).toBe('A paper');
+	});
+
+	it('never demotes a paper met again', () => {
+		const library: KnownPaper[] = [];
+		absorbPapers(library, [{ id: '2401.00001', depth: 'read' }]);
+		absorbPapers(library, [{ id: '2401.00001', depth: 'listed' }]);
+		expect(library[0].depth).toBe('read');
+	});
+
+	it('carries the cited flag the writer proved', () => {
+		const library: KnownPaper[] = [];
+		absorbPapers(library, [{ id: '2401.00002', depth: 'read', cited: true }]);
+		expect(library[0].cited).toBe(true);
+	});
+
+	it('shares its identity rules with the tool-result door', () => {
+		// Same room: a paper the chat agent found and one the pipeline read are
+		// the same row, not two.
+		const library: KnownPaper[] = [];
+		absorb(library, 'search_papers', { papers: [{ id: '2401.00003', title: 'Shared' }] });
+		absorbPapers(library, [{ id: '2401.00003', depth: 'read' }]);
+
+		expect(library).toHaveLength(1);
+		expect(library[0]).toMatchObject({ title: 'Shared', depth: 'read' });
 	});
 });

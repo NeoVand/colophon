@@ -3,7 +3,7 @@
 **Read this first after a context compaction.** `CLAUDE.md` has the load-bearing
 technical facts; this has the situation.
 
-_Last updated: 2026-08-19, during the /loop session._
+_Last updated: 2026-08-25._
 
 ## What this is
 
@@ -21,9 +21,10 @@ The user is **Neo Mohsenvand** (MIT Media Lab). One reader, one vault.
 
 ```bash
 cd ~/repos/colophon
-npm run dev -- --port 5180 --strictPort   # dev server
+npm run dev                                # dev server (or preview_start)
 npm run check                              # svelte-check — keep at 0 errors
-npx vitest run --project=server            # 148 tests, all must pass
+npx vitest run --project=server            # 543 tests, all must pass
+npx vitest run --project=client            # 18 more, in a real browser
 LIVE=1 npx vitest run --project=server     # + network/paid tests (opt-in)
 npx vercel deploy --prod --yes             # deploy
 ```
@@ -52,16 +53,29 @@ curl -c jar -X POST "$ORIGIN/login" -H "Origin: $ORIGIN" -d "password=$PASSWORD"
 
 ## In flight
 
+**The audit is closed.** All twelve of `docs/AUDIT.md`'s findings are fixed, and
+five more that only a real run could expose are recorded there as 13–17. The
+rule they all come back to, and the one to carry into anything next:
+
+> **An instrument must be a reading of the live system, not a description of it.**
+
+**Deep research runs from the composer.** The mode travels with the message,
+`/api/research` streams the pipeline's stages, and the three panels that draw it
+are live: the pipeline's progress, the graph, and the trace. Verified on a real
+1m 40s run — five stages lighting in turn, 24 papers in the library with the
+three the writer cited marked as such, 89,479 tokens on the spend bar.
+
+**The graph draws whichever machine is executing** — the pipeline during a
+research run, the agent loop otherwise, the latter read from `/api/agent/shape`,
+which asks the built agent rather than assembling an answer from its parts.
+
 **Delivery is built and unverifiable until Neo makes a Resend account.** The
 path degrades honestly: with no key it is never attempted, and `deliveredAt`
 null with `deliveryError` null is the pair's way of saying so (attempted and
 refused sets the error). `/lab/email` renders the real email as `text/html`, so
 the part I _can_ check has been checked by looking at it.
 
-**The UI foundation landed**: design tokens, four themes, the session store, and
-three X-ray panels — spend, library, events. Verified live against a real run.
-
-Two facts worth keeping:
+Three facts worth keeping:
 
 - **`verdict` is not delivery.** The gate's answer and whether an email arrived
   are different columns now. A delivery failure is deliberately _not_ a sweep
@@ -70,20 +84,36 @@ Two facts worth keeping:
 - **The reference list is what was _cited_, not what was read.** Built from
   `registry.cited()`. Built from `read()` it silently omitted a paper the prose
   attributed, because that paper was cited from its abstract.
+- **A workflow does not report its token usage.** `workflow-finish` carries
+  all-zero usage for a pipeline whose steps call `agent.generate()`, and there
+  is no nested feed to recover it from. `/api/research` sums each call's own
+  `totalUsage` through a `meter` injected into the workflow. If a spend readout
+  for a research run ever goes back to zero, look there first.
 
-**Known limitation to be honest about:** the source registry is in-memory per
-request, so a tool needing it cannot currently be approved across requests.
-Only `generate_image` requires approval today and it does not touch the
-registry, so this is not yet a bug — but it will be if `cite` ever needs a gate.
+**Known limitations, said out loud rather than discovered:**
+
+- The source registry is in-memory per request, so a tool needing it cannot be
+  approved across requests. Only `generate_image` requires approval today and it
+  does not touch the registry.
+- **The pipeline's tool calls are not on the wire.** `search_papers` and `cite`
+  run inside a step, as calls the workflow made rather than calls the model
+  asked for, and nothing publishes them. The run panel prints `—` for tools
+  during a research turn rather than `0`, because zero would be a claim.
+- **A research turn has no memory and does not join the conversation.** The
+  pipeline answers from the question alone, and Mastra's thread never sees it,
+  so a later chat turn will not know it happened.
 
 ## Next, in order
 
-1. **The rest of the X-ray** — the context window taken apart (needs the fetch
-   tee wired through the server), memory, and a subagent lane view.
-2. **The book** — see `docs/BOOK.md`. Neo reviews plates before they ship.
-3. Typst/LaTeX authoring; the vault as a document store.
-4. A digests/subscriptions surface in the app — they exist in the database and
-   have no UI at all.
+See `docs/ROADMAP.md` for the full list. The head of it:
+
+1. **The book** — ten chapters of prose, no plates. Neo reviews every plate.
+2. **A digests/subscriptions surface** — they exist in the database, run on a
+   daily cron, and have no UI at all.
+3. Settings: bring-your-own-key and the model picker. The `model` variable in
+   `+page.svelte` is bound to a sheet and reaches no request — the last binding
+   of that kind left in the app.
+4. Typst/LaTeX authoring; the vault as a document store.
 
 ## Waiting on Neo
 
@@ -107,6 +137,9 @@ written by `vercel env pull` and carries `DATABASE_URL`.
 
 `OPENAI_API_KEY` · `COLOPHON_PASSWORD` · `COLOPHON_SECRET` · `CRON_SECRET` ·
 `OPENALEX_MAILTO` (mmv@mit.edu) · `RESEND_TO` (mmv@mit.edu) · `DATABASE_URL`
+
+Optional: `COLOPHON_TRACING=off` turns span recording off. It is **on by
+default** — see `docs/DECISIONS.md`, 2026-08-25, for why that was reversed.
 
 Not yet set: `RESEND_API_KEY`, blob storage credentials.
 
